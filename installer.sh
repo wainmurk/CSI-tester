@@ -112,25 +112,33 @@ if [[ "$ENABLE_SERVICE" == "1" ]]; then
   systemctl enable avcsi.service
 fi
 
+echo "[4/7] Ensuring ADV7282-M overlay"
 detect_adv_addr() {
-  if [[ "$ADDR" == "20" || "$ADDR" == "0x20" ]]; then echo "0x20"; return; fi
-  if [[ "$ADDR" == "21" || "$ADDR" == "0x21" ]]; then echo "0x21"; return; fi
+  if [[ "$ADDR" == "20" || "$ADDR" == "0x20" ]]; then
+    echo "0x20"
+    return
+  fi
+  if [[ "$ADDR" == "21" || "$ADDR" == "0x21" ]]; then
+    echo "0x21"
+    return
+  fi
   local bus table
   for dev in /dev/i2c-*; do
     [[ -e "$dev" ]] || continue
     bus="${dev##*-}"
     table="$(i2cdetect -y "$bus" 2>/dev/null || true)"
     if printf '%s\n' "$table" | awk '/^20:/ {if ($2=="20" || $2=="UU") found=1} END {exit !found}'; then
-      echo "0x20"; return
+      echo "0x20"
+      return
     fi
     if printf '%s\n' "$table" | awk '/^20:/ {if ($3=="21" || $3=="UU") found=1} END {exit !found}'; then
-      echo "0x21"; return
+      echo "0x21"
+      return
     fi
   done
   echo "0x21"
 }
 
-echo "[4/7] Ensuring ADV7282-M overlay"
 ADV_ADDR="$(detect_adv_addr)"
 BOOT_CONFIG=""
 if [[ -f /boot/firmware/config.txt ]]; then
@@ -140,11 +148,12 @@ elif [[ -f /boot/config.txt ]]; then
 fi
 if [[ -n "$BOOT_CONFIG" ]]; then
   OVERLAY_LINE="dtoverlay=adv7282m,addr=${ADV_ADDR}"
-  cp "$BOOT_CONFIG" "${BOOT_CONFIG}.avcsi.bak"
   if grep -Eq '^[[:space:]]*dtoverlay=adv7282m' "$BOOT_CONFIG"; then
+    cp "$BOOT_CONFIG" "${BOOT_CONFIG}.avcsi.bak"
     sed -i -E "s#^[[:space:]]*dtoverlay=adv7282m.*#${OVERLAY_LINE}#" "$BOOT_CONFIG"
     echo "Updated ADV7282-M overlay in $BOOT_CONFIG to ${OVERLAY_LINE}. Reboot is required."
   else
+    cp "$BOOT_CONFIG" "${BOOT_CONFIG}.avcsi.bak"
     printf '\n# AV-CSI ADV7282-M\n%s\n' "$OVERLAY_LINE" >>"$BOOT_CONFIG"
     echo "Added ${OVERLAY_LINE} to $BOOT_CONFIG. Reboot is required."
   fi
@@ -155,6 +164,10 @@ fi
 echo "[5/7] Checking devices"
 v4l2-ctl --list-devices || true
 i2cdetect -l || true
+if ! i2cdetect -l | grep -Eq 'i2c-(10|0)[[:space:]]'; then
+  echo "WARNING: camera-connector I2C bus (usually i2c-10 on Pi 4) is not visible."
+  echo "The adv7282m overlay uses the camera connector I2C pins, not GPIO2/GPIO3 i2c-1."
+fi
 if [[ -e /dev/fb1 ]]; then
   echo "Framebuffer /dev/fb1 found."
 else
