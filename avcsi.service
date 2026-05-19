@@ -11,8 +11,9 @@ Environment=AVCSI_HEIGHT=320
 Environment=AVCSI_FB=auto
 Environment=AVCSI_DEVICE=auto
 Environment=AVCSI_ROTATE=0
+Environment=AVCSI_STANDARD=auto
 EnvironmentFile=-/etc/default/avcsi
-ExecStart=/usr/bin/python3 /opt/avcsi/av_csi_tester.py --width ${AVCSI_WIDTH} --height ${AVCSI_HEIGHT} --fb ${AVCSI_FB} --device ${AVCSI_DEVICE} --rotate ${AVCSI_ROTATE}
+ExecStart=/usr/bin/python3 /opt/avcsi/av_csi_tester.py --width ${AVCSI_WIDTH} --height ${AVCSI_HEIGHT} --fb ${AVCSI_FB} --device ${AVCSI_DEVICE} --rotate ${AVCSI_ROTATE} --standard ${AVCSI_STANDARD}
 Restart=always
 RestartSec=2
 
