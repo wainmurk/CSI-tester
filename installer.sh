@@ -9,6 +9,7 @@ FB="auto"
 DEVICE="auto"
 ROTATE="0"
 STANDARD="auto"
+ADDR="auto"
 INSTALL_LCD_DRIVER="1"
 ENABLE_SERVICE="1"
 START_SERVICE="1"
@@ -26,6 +27,7 @@ Options:
   --device PATH|auto      V4L2 device (default: auto)
   --rotate 0|90|180|270   Rotate captured image in the app (default: 0)
   --standard auto|PAL|NTSC Analog video standard (default: auto)
+  --addr auto|0x20|0x21 ADV7282-M I2C address for dtoverlay (default: auto)
   --no-lcd-driver         Do not run LCD-show/LCD35-show
   --no-enable             Install files without enabling the service
   --no-start              Do not start service after install
@@ -42,6 +44,7 @@ while [[ $# -gt 0 ]]; do
     --device) DEVICE="$2"; shift 2 ;;
     --rotate) ROTATE="$2"; shift 2 ;;
     --standard) STANDARD="$2"; shift 2 ;;
+    --addr) ADDR="$2"; shift 2 ;;
     --no-lcd-driver) INSTALL_LCD_DRIVER="0"; shift ;;
     --no-enable) ENABLE_SERVICE="0"; shift ;;
     --no-start) START_SERVICE="0"; shift ;;
@@ -62,6 +65,11 @@ fi
 
 if [[ "$STANDARD" != "auto" && "$STANDARD" != "PAL" && "$STANDARD" != "NTSC" && "$STANDARD" != "SECAM" && "$STANDARD" != "pal" && "$STANDARD" != "ntsc" && "$STANDARD" != "secam" ]]; then
   echo "--standard must be auto, PAL, NTSC, or SECAM" >&2
+  exit 2
+fi
+
+if [[ "$ADDR" != "auto" && "$ADDR" != "0x20" && "$ADDR" != "0x21" && "$ADDR" != "20" && "$ADDR" != "21" ]]; then
+  echo "--addr must be auto, 0x20, or 0x21" >&2
   exit 2
 fi
 
@@ -104,7 +112,26 @@ if [[ "$ENABLE_SERVICE" == "1" ]]; then
   systemctl enable avcsi.service
 fi
 
+detect_adv_addr() {
+  if [[ "$ADDR" == "20" || "$ADDR" == "0x20" ]]; then echo "0x20"; return; fi
+  if [[ "$ADDR" == "21" || "$ADDR" == "0x21" ]]; then echo "0x21"; return; fi
+  local bus table
+  for dev in /dev/i2c-*; do
+    [[ -e "$dev" ]] || continue
+    bus="${dev##*-}"
+    table="$(i2cdetect -y "$bus" 2>/dev/null || true)"
+    if printf '%s\n' "$table" | awk '/^20:/ {if ($2=="20" || $2=="UU") found=1} END {exit !found}'; then
+      echo "0x20"; return
+    fi
+    if printf '%s\n' "$table" | awk '/^20:/ {if ($3=="21" || $3=="UU") found=1} END {exit !found}'; then
+      echo "0x21"; return
+    fi
+  done
+  echo "0x21"
+}
+
 echo "[4/7] Ensuring ADV7282-M overlay"
+ADV_ADDR="$(detect_adv_addr)"
 BOOT_CONFIG=""
 if [[ -f /boot/firmware/config.txt ]]; then
   BOOT_CONFIG="/boot/firmware/config.txt"
@@ -112,12 +139,14 @@ elif [[ -f /boot/config.txt ]]; then
   BOOT_CONFIG="/boot/config.txt"
 fi
 if [[ -n "$BOOT_CONFIG" ]]; then
-  if ! grep -Eq '^[[:space:]]*dtoverlay=adv7282m' "$BOOT_CONFIG"; then
-    cp "$BOOT_CONFIG" "${BOOT_CONFIG}.avcsi.bak"
-    printf '\n# AV-CSI ADV7282-M\n%s\n' 'dtoverlay=adv7282m' >>"$BOOT_CONFIG"
-    echo "Added dtoverlay=adv7282m to $BOOT_CONFIG. Reboot is required."
+  OVERLAY_LINE="dtoverlay=adv7282m,addr=${ADV_ADDR}"
+  cp "$BOOT_CONFIG" "${BOOT_CONFIG}.avcsi.bak"
+  if grep -Eq '^[[:space:]]*dtoverlay=adv7282m' "$BOOT_CONFIG"; then
+    sed -i -E "s#^[[:space:]]*dtoverlay=adv7282m.*#${OVERLAY_LINE}#" "$BOOT_CONFIG"
+    echo "Updated ADV7282-M overlay in $BOOT_CONFIG to ${OVERLAY_LINE}. Reboot is required."
   else
-    echo "ADV7282-M overlay already present in $BOOT_CONFIG."
+    printf '\n# AV-CSI ADV7282-M\n%s\n' "$OVERLAY_LINE" >>"$BOOT_CONFIG"
+    echo "Added ${OVERLAY_LINE} to $BOOT_CONFIG. Reboot is required."
   fi
 else
   echo "Boot config not found; cannot add dtoverlay=adv7282m automatically."
