@@ -65,6 +65,7 @@ apt-get install -y \
   ca-certificates \
   curl \
   git \
+  i2c-tools \
   python3 \
   python3-numpy \
   python3-opencv \
@@ -96,6 +97,7 @@ fi
 
 echo "[5/7] Checking devices"
 v4l2-ctl --list-devices || true
+i2cdetect -l || true
 if [[ -e /dev/fb1 ]]; then
   echo "Framebuffer /dev/fb1 found."
 else
