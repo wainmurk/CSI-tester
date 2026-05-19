@@ -14,7 +14,7 @@ curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.
 
 The installer downloads everything it needs and installs it automatically:
 
-- `python3`, `python3-opencv`, `python3-numpy`, `v4l-utils`, `git`, `curl`;
+- `python3`, `python3-opencv`, `python3-numpy`, `v4l-utils`, `i2c-tools`, `git`, `curl`;
 - `/opt/avcsi/av_csi_tester.py`;
 - `/etc/systemd/system/avcsi.service`;
 - `/etc/default/avcsi`;
@@ -50,8 +50,8 @@ curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.
 
 ## Behavior
 
-- If the ADV7282-M / V4L2 capture device is not found, the display shows `NO ADAPTER`.
-- If the adapter is found but no frames are readable, the display shows `NO SIGNAL`.
+- If the ADV7282-M is not visible on I2C and no usable capture device is found, the display shows `NO ADAPTER`.
+- If the adapter is visible on I2C but V4L2 is not ready or frames are not readable, the display shows `NO SIGNAL`.
 - If video is present, the image is shown fullscreen.
 - OSD shows FPS, video device, input resolution, pixel format, V4L2 status, approximate signal quality, brightness, contrast, sharpness, saturation, and motion.
 
@@ -76,6 +76,19 @@ sudo nano /etc/default/avcsi
 sudo systemctl restart avcsi.service
 ```
 
+## Diagnostics
+
+If the screen still shows `NO ADAPTER`, run:
+
+```bash
+v4l2-ctl --list-devices
+i2cdetect -l
+for b in /dev/i2c-*; do sudo i2cdetect -y "${b##*-}"; done
+journalctl -u avcsi.service -n 80 --no-pager
+```
+
+For ADV728x the app treats I2C addresses `0x20` and `0x21`, or a kernel I2C device name containing `adv`, as adapter presence. If I2C sees the chip but V4L2 is not producing frames, the app shows `NO SIGNAL` instead of `NO ADAPTER`.
+
 ## OSD Data
 
 Without a custom low-level ADV7282-M register reader, the reliable data comes from V4L2 and frame analysis:
@@ -85,5 +98,6 @@ Without a custom low-level ADV7282-M register reader, the reliable data comes fr
 - FPS;
 - input resolution and pixel format from `v4l2-ctl --all`;
 - V4L2 input status if the driver exposes it;
+- ADV728x presence on I2C sysfs or common ADV728x I2C addresses (`0x20`, `0x21`);
 - brightness, contrast, saturation, sharpness, and motion estimated from the frame;
 - approximate signal quality percentage.
