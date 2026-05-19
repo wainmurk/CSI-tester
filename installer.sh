@@ -3,14 +3,13 @@ set -euo pipefail
 
 REPO_RAW="${REPO_RAW:-https://raw.githubusercontent.com/wainmurk/CSI-tester/main}"
 INSTALL_DIR="/opt/avcsi"
-WIDTH="480"
-HEIGHT="320"
-FB="auto"
+WIDTH="1280"
+HEIGHT="720"
+FB="/dev/fb0"
 DEVICE="auto"
 ROTATE="0"
 STANDARD="auto"
 ADDR="auto"
-INSTALL_LCD_DRIVER="1"
 ENABLE_SERVICE="1"
 START_SERVICE="1"
 
@@ -21,14 +20,13 @@ Usage:
 
 Options:
   --install-dir DIR       Install directory (default: /opt/avcsi)
-  --width N               Display width (default: 480)
-  --height N              Display height (default: 320)
-  --fb PATH|auto          Framebuffer (default: auto; prefers /dev/fb1)
+  --width N               HDMI output width (default: 1280)
+  --height N              HDMI output height (default: 720)
+  --fb PATH|auto          Framebuffer (default: /dev/fb0 for HDMI)
   --device PATH|auto      V4L2 device (default: auto)
   --rotate 0|90|180|270   Rotate captured image in the app (default: 0)
   --standard auto|PAL|NTSC Analog video standard (default: auto)
   --addr auto|0x20|0x21 ADV7282-M I2C address for dtoverlay (default: auto)
-  --no-lcd-driver         Do not run LCD-show/LCD35-show
   --no-enable             Install files without enabling the service
   --no-start              Do not start service after install
   -h, --help              Show this help
@@ -45,7 +43,7 @@ while [[ $# -gt 0 ]]; do
     --rotate) ROTATE="$2"; shift 2 ;;
     --standard) STANDARD="$2"; shift 2 ;;
     --addr) ADDR="$2"; shift 2 ;;
-    --no-lcd-driver) INSTALL_LCD_DRIVER="0"; shift ;;
+    --no-lcd-driver) shift ;;
     --no-enable) ENABLE_SERVICE="0"; shift ;;
     --no-start) START_SERVICE="0"; shift ;;
     -h|--help) usage; exit 0 ;;
@@ -169,24 +167,16 @@ if ! i2cdetect -l | grep -Eq 'i2c-(10|0)[[:space:]]'; then
   echo "WARNING: camera-connector I2C bus (usually i2c-10 on Pi 4) is not visible."
   echo "The adv7282m overlay uses the camera connector I2C pins, not GPIO2/GPIO3 i2c-1."
 fi
-if [[ -e /dev/fb1 ]]; then
-  echo "Framebuffer /dev/fb1 found."
+if [[ -e "$FB" && "$FB" != "auto" ]]; then
+  echo "Framebuffer $FB found."
+elif [[ -e /dev/fb0 ]]; then
+  echo "Framebuffer /dev/fb0 found."
 else
-  echo "Framebuffer /dev/fb1 is not present yet. LCD-show usually creates it after reboot."
+  echo "WARNING: HDMI framebuffer /dev/fb0 is not present yet."
 fi
 
-echo "[6/7] LCD driver"
-if [[ "$INSTALL_LCD_DRIVER" == "1" ]]; then
-  cd /opt
-  rm -rf LCD-show
-  git clone https://github.com/goodtft/LCD-show.git
-  chmod -R 755 LCD-show
-  cd LCD-show
-  echo "Running LCD35-show. It may reboot the Raspberry Pi."
-  ./LCD35-show
-else
-  echo "Skipped LCD-show. Install later with: cd /opt/LCD-show && sudo ./LCD35-show"
-fi
+echo "[6/7] HDMI output selected"
+echo "Built-in 3.5 inch LCD/LCD-show is not installed by this HDMI build."
 
 echo "[7/7] Starting service"
 if [[ "$START_SERVICE" == "1" ]]; then
