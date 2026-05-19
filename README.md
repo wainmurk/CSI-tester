@@ -54,6 +54,12 @@ Force PAL or NTSC if auto-detection does not open the capture device:
 curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --standard PAL
 ```
 
+Force ADV7282-M I2C address if the overlay probes the wrong address:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --no-lcd-driver --addr 0x20 --standard PAL
+```
+
 ## Behavior
 
 - If the ADV7282-M is not visible on I2C and no usable capture device is found, the display shows `NO ADAPTER`.
@@ -84,15 +90,18 @@ sudo systemctl restart avcsi.service
 
 ## Diagnostics
 
-If the display says `NO SIGNAL ... cannot open`, reboot first. The installer adds this boot overlay:
+If the display says `NO SIGNAL ... cannot open` or goes back to `NO ADAPTER`, reboot first. The installer adds this boot overlay:
 
 ```text
-dtoverlay=adv7282m
+dtoverlay=adv7282m,addr=0x21
 ```
+
+Some boards use `addr=0x20`, while the Raspberry Pi overlay default is `0x21`. The installer tries to detect this, but you can force it with `--addr 0x20` or `--addr 0x21`.
 
 The overlay only takes effect after reboot. If it still fails, run:
 
 ```bash
+grep -n "adv728" /boot/firmware/config.txt /boot/config.txt 2>/dev/null || true
 v4l2-ctl --list-devices
 v4l2-ctl -d /dev/video0 -D
 v4l2-ctl -d /dev/video0 --get-detected-standard
