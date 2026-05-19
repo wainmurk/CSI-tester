@@ -90,18 +90,19 @@ sudo systemctl restart avcsi.service
 
 ## Diagnostics
 
-If the display says `NO SIGNAL ... cannot open` or goes back to `NO ADAPTER`, reboot first. The installer adds this boot overlay:
+If the display says `NO SIGNAL ... cannot open`, reboot first. The installer adds this boot overlay:
 
 ```text
-dtoverlay=adv7282m,addr=0x21
+dtoverlay=adv7282m
 ```
 
 Some boards use `addr=0x20`, while the Raspberry Pi overlay default is `0x21`. The installer tries to detect this, but you can force it with `--addr 0x20` or `--addr 0x21`.
 
+On Raspberry Pi 4 the stock `adv7282m` overlay uses Unicam1 and the I2C pins on the camera connector, normally exposed as `i2c-10`. It does not use GPIO2/GPIO3 `i2c-1`. If `i2cdetect -l` shows only `i2c-1`, the kernel has not created the camera-connector I2C bus and the ADV7282-M driver will not bind. In that state the app correctly shows `NO ADAPTER`.
+
 The overlay only takes effect after reboot. If it still fails, run:
 
 ```bash
-grep -n "adv728" /boot/firmware/config.txt /boot/config.txt 2>/dev/null || true
 v4l2-ctl --list-devices
 v4l2-ctl -d /dev/video0 -D
 v4l2-ctl -d /dev/video0 --get-detected-standard
