@@ -150,11 +150,12 @@ if [[ -n "$BOOT_CONFIG" ]]; then
   OVERLAY_LINE="dtoverlay=adv7282m,addr=${ADV_ADDR}"
   if grep -Eq '^[[:space:]]*dtoverlay=adv7282m' "$BOOT_CONFIG"; then
     cp "$BOOT_CONFIG" "${BOOT_CONFIG}.avcsi.bak"
-    sed -i -E "s#^[[:space:]]*dtoverlay=adv7282m.*#${OVERLAY_LINE}#" "$BOOT_CONFIG"
-    echo "Updated ADV7282-M overlay in $BOOT_CONFIG to ${OVERLAY_LINE}. Reboot is required."
+    sed -i -E '/^[[:space:]]*dtoverlay=adv7282m/d' "$BOOT_CONFIG"
+    printf '\n[all]\n# AV-CSI ADV7282-M\n%s\n' "$OVERLAY_LINE" >>"$BOOT_CONFIG"
+    echo "Moved ADV7282-M overlay to [all] in $BOOT_CONFIG as ${OVERLAY_LINE}. Reboot is required."
   else
     cp "$BOOT_CONFIG" "${BOOT_CONFIG}.avcsi.bak"
-    printf '\n# AV-CSI ADV7282-M\n%s\n' "$OVERLAY_LINE" >>"$BOOT_CONFIG"
+    printf '\n[all]\n# AV-CSI ADV7282-M\n%s\n' "$OVERLAY_LINE" >>"$BOOT_CONFIG"
     echo "Added ${OVERLAY_LINE} to $BOOT_CONFIG. Reboot is required."
   fi
 else
