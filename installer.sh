@@ -8,6 +8,7 @@ HEIGHT="320"
 FB="auto"
 DEVICE="auto"
 ROTATE="0"
+STANDARD="auto"
 INSTALL_LCD_DRIVER="1"
 ENABLE_SERVICE="1"
 START_SERVICE="1"
@@ -24,6 +25,7 @@ Options:
   --fb PATH|auto          Framebuffer (default: auto; prefers /dev/fb1)
   --device PATH|auto      V4L2 device (default: auto)
   --rotate 0|90|180|270   Rotate captured image in the app (default: 0)
+  --standard auto|PAL|NTSC Analog video standard (default: auto)
   --no-lcd-driver         Do not run LCD-show/LCD35-show
   --no-enable             Install files without enabling the service
   --no-start              Do not start service after install
@@ -39,6 +41,7 @@ while [[ $# -gt 0 ]]; do
     --fb) FB="$2"; shift 2 ;;
     --device) DEVICE="$2"; shift 2 ;;
     --rotate) ROTATE="$2"; shift 2 ;;
+    --standard) STANDARD="$2"; shift 2 ;;
     --no-lcd-driver) INSTALL_LCD_DRIVER="0"; shift ;;
     --no-enable) ENABLE_SERVICE="0"; shift ;;
     --no-start) START_SERVICE="0"; shift ;;
@@ -54,6 +57,11 @@ fi
 
 if [[ "$ROTATE" != "0" && "$ROTATE" != "90" && "$ROTATE" != "180" && "$ROTATE" != "270" ]]; then
   echo "--rotate must be 0, 90, 180, or 270" >&2
+  exit 2
+fi
+
+if [[ "$STANDARD" != "auto" && "$STANDARD" != "PAL" && "$STANDARD" != "NTSC" && "$STANDARD" != "SECAM" && "$STANDARD" != "pal" && "$STANDARD" != "ntsc" && "$STANDARD" != "secam" ]]; then
+  echo "--standard must be auto, PAL, NTSC, or SECAM" >&2
   exit 2
 fi
 
@@ -85,6 +93,7 @@ AVCSI_HEIGHT=${HEIGHT}
 AVCSI_FB=${FB}
 AVCSI_DEVICE=${DEVICE}
 AVCSI_ROTATE=${ROTATE}
+AVCSI_STANDARD=${STANDARD}
 EOF
 
 echo "[4/7] Installing systemd service"
@@ -93,6 +102,25 @@ chmod 0644 /etc/systemd/system/avcsi.service
 systemctl daemon-reload
 if [[ "$ENABLE_SERVICE" == "1" ]]; then
   systemctl enable avcsi.service
+fi
+
+echo "[4/7] Ensuring ADV7282-M overlay"
+BOOT_CONFIG=""
+if [[ -f /boot/firmware/config.txt ]]; then
+  BOOT_CONFIG="/boot/firmware/config.txt"
+elif [[ -f /boot/config.txt ]]; then
+  BOOT_CONFIG="/boot/config.txt"
+fi
+if [[ -n "$BOOT_CONFIG" ]]; then
+  if ! grep -Eq '^[[:space:]]*dtoverlay=adv7282m' "$BOOT_CONFIG"; then
+    cp "$BOOT_CONFIG" "${BOOT_CONFIG}.avcsi.bak"
+    printf '\n# AV-CSI ADV7282-M\n%s\n' 'dtoverlay=adv7282m' >>"$BOOT_CONFIG"
+    echo "Added dtoverlay=adv7282m to $BOOT_CONFIG. Reboot is required."
+  else
+    echo "ADV7282-M overlay already present in $BOOT_CONFIG."
+  fi
+else
+  echo "Boot config not found; cannot add dtoverlay=adv7282m automatically."
 fi
 
 echo "[5/7] Checking devices"
