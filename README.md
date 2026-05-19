@@ -48,6 +48,12 @@ Use a specific framebuffer:
 curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --fb /dev/fb1
 ```
 
+Force PAL or NTSC if auto-detection does not open the capture device:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --standard PAL
+```
+
 ## Behavior
 
 - If the ADV7282-M is not visible on I2C and no usable capture device is found, the display shows `NO ADAPTER`.
@@ -78,16 +84,24 @@ sudo systemctl restart avcsi.service
 
 ## Diagnostics
 
-If the screen still shows `NO ADAPTER`, run:
+If the display says `NO SIGNAL ... cannot open`, reboot first. The installer adds this boot overlay:
+
+```text
+dtoverlay=adv7282m
+```
+
+The overlay only takes effect after reboot. If it still fails, run:
 
 ```bash
 v4l2-ctl --list-devices
+v4l2-ctl -d /dev/video0 -D
+v4l2-ctl -d /dev/video0 --get-detected-standard
+v4l2-ctl -d /dev/video0 --set-standard PAL
+v4l2-ctl -d /dev/video0 --stream-mmap --stream-count=5 --stream-to=/tmp/adv.raw
 i2cdetect -l
 for b in /dev/i2c-*; do sudo i2cdetect -y "${b##*-}"; done
 journalctl -u avcsi.service -n 80 --no-pager
 ```
-
-For ADV728x the app treats I2C addresses `0x20` and `0x21`, or a kernel I2C device name containing `adv`, as adapter presence. If I2C sees the chip but V4L2 is not producing frames, the app shows `NO SIGNAL` instead of `NO ADAPTER`.
 
 ## OSD Data
 
