@@ -1,0 +1,20 @@
+[Unit]
+Description=AV-CSI Tester for ADV7282-M
+After=systemd-udev-settle.service
+Wants=systemd-udev-settle.service
+
+[Service]
+Type=simple
+User=root
+Environment=AVCSI_WIDTH=480
+Environment=AVCSI_HEIGHT=320
+Environment=AVCSI_FB=auto
+Environment=AVCSI_DEVICE=auto
+Environment=AVCSI_ROTATE=0
+EnvironmentFile=-/etc/default/avcsi
+ExecStart=/usr/bin/python3 /opt/avcsi/av_csi_tester.py --width ${AVCSI_WIDTH} --height ${AVCSI_HEIGHT} --fb ${AVCSI_FB} --device ${AVCSI_DEVICE} --rotate ${AVCSI_ROTATE}
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target
