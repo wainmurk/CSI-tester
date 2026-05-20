@@ -193,6 +193,10 @@ else
   cat >/usr/local/bin/avcsi-desktop-launcher <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+exec 9>/tmp/avcsi-desktop.lock
+flock -n 9 || exit 0
+pkill -u "$(id -un)" -f '/opt/avcsi/av_csi_tester.py' >/dev/null 2>&1 || true
+sleep 1
 for _ in $(seq 1 60); do
   if [[ -n "${DISPLAY:-}" ]] || [[ -S /tmp/.X11-unix/X0 ]]; then
     break
@@ -213,7 +217,7 @@ rm -f /tmp/avcsi-desktop.log
   --rotate "${AVCSI_ROTATE:-0}" \
   --standard "${AVCSI_STANDARD:-auto}" >>/tmp/avcsi-desktop.log 2>&1 &
 app_pid="$!"
-for _ in $(seq 1 30); do
+for _ in $(seq 1 120); do
   wmctrl -r "AV-CSI Tester" -b add,fullscreen,above >/dev/null 2>&1 || true
   wmctrl -a "AV-CSI Tester" >/dev/null 2>&1 || true
   sleep 1

@@ -127,6 +127,14 @@ DISPLAY=:0 wmctrl -r "AV-CSI Tester" -b add,fullscreen,above
 DISPLAY=:0 wmctrl -a "AV-CSI Tester"
 ```
 
+If multiple fullscreen instances were started, reset to one instance:
+
+```bash
+pkill -f av_csi_tester.py
+rm -f /tmp/avcsi-desktop.lock
+DISPLAY=:0 /usr/local/bin/avcsi-desktop-launcher &
+```
+
 ## Required Kernel Overlay
 
 The installer places the ADV7282-M overlay under `[all]`:
