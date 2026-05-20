@@ -7,7 +7,7 @@ import signal
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Protocol, Tuple
 
 import cv2
 import numpy as np
@@ -38,6 +38,59 @@ class Framebuffer:
     height: int
     bpp: int
     stride: int
+
+
+class Display(Protocol):
+    width: int
+    height: int
+
+    def show(self, image: np.ndarray):
+        ...
+
+    def close(self):
+        ...
+
+
+class FramebufferDisplay:
+    def __init__(self, path: str, width: int, height: int):
+        self.fb, self.fb_file = open_framebuffer(path, width, height)
+        self.width = width
+        self.height = height
+
+    def show(self, image: np.ndarray):
+        self.fb_file.seek(0)
+        self.fb_file.write(bgr_to_fb_bytes(image, self.fb))
+
+    def close(self):
+        self.fb_file.close()
+
+
+class SdlDisplay:
+    def __init__(self, width: int, height: int):
+        os.environ.setdefault("SDL_VIDEODRIVER", "kmsdrm")
+        os.environ.setdefault("SDL_NOMOUSE", "1")
+        import pygame
+
+        self.pygame = pygame
+        pygame.init()
+        pygame.mouse.set_visible(False)
+        info = pygame.display.Info()
+        self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        self.width = self.screen.get_width() or info.current_w or width
+        self.height = self.screen.get_height() or info.current_h or height
+        print(f"Using SDL display: {self.width}x{self.height}, driver {pygame.display.get_driver()}", flush=True)
+
+    def show(self, image: np.ndarray):
+        if image.shape[1] != self.width or image.shape[0] != self.height:
+            image = cv2.resize(image, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        surface = self.pygame.image.frombuffer(rgb.tobytes(), (self.width, self.height), "RGB")
+        self.screen.blit(surface, (0, 0))
+        self.pygame.display.flip()
+        self.pygame.event.pump()
+
+    def close(self):
+        self.pygame.quit()
 
 
 def stop(_signum, _frame):
@@ -366,10 +419,22 @@ def show_frame(fb: Framebuffer, fb_file, image: np.ndarray):
     fb_file.write(bgr_to_fb_bytes(image, fb))
 
 
+def open_display(output: str, fb_path: str, width: int, height: int) -> Display:
+    if output in ("auto", "sdl"):
+        try:
+            return SdlDisplay(width, height)
+        except Exception as exc:
+            if output == "sdl":
+                raise
+            print(f"SDL display unavailable, falling back to framebuffer: {exc}", flush=True)
+    return FramebufferDisplay(fb_path, width, height)
+
+
 def main():
     parser = argparse.ArgumentParser(description="ADV7282-M AV-CSI tester for Raspberry Pi display")
     parser.add_argument("--width", type=int, default=DEFAULT_W)
     parser.add_argument("--height", type=int, default=DEFAULT_H)
+    parser.add_argument("--output", choices=("auto", "sdl", "fb"), default="auto", help="HDMI output backend")
     parser.add_argument("--fb", default="auto", help="Framebuffer path, HDMI console is usually /dev/fb0")
     parser.add_argument("--device", default="auto", help="V4L2 device path or auto")
     parser.add_argument("--rotate", choices=("0", "90", "180", "270"), default="0")
@@ -380,9 +445,9 @@ def main():
     signal.signal(signal.SIGTERM, stop)
 
     fb = choose_framebuffer(args.fb)
-    fb_info, fb_file = open_framebuffer(fb, args.width, args.height)
-    width = args.width
-    height = args.height
+    display = open_display(args.output, fb, args.width, args.height)
+    width = display.width
+    height = display.height
 
     cap = None
     device: Optional[VideoDevice] = None
@@ -428,7 +493,7 @@ def main():
             else:
                 detail = "ADV7282-M not found on V4L2/I2C"
                 image = draw_center(width, height, "NO ADAPTER", detail, (35, 35, 235))
-            show_frame(fb_info, fb_file, image)
+            display.show(image)
             time.sleep(0.2)
             continue
 
@@ -440,7 +505,7 @@ def main():
         if not ok or frame is None:
             read_failures += 1
             image = draw_center(width, height, "NO SIGNAL", "Adapter is present, waiting for video", (30, 180, 245))
-            show_frame(fb_info, fb_file, image)
+            display.show(image)
             if read_failures >= READ_FAIL_LIMIT:
                 cap.release()
                 cap = None
@@ -473,16 +538,16 @@ def main():
         input_res = v4l2_info.get("input", f"{int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}")
         osd_lines = [
             f"ADV7282-M tester | {device.path if device else 'auto'} | {status}",
-            f"FPS {fps:4.1f} | input {input_res} | fmt {v4l2_info.get('fmt', 'n/a')} | fb {fb_info.path}",
+            f"FPS {fps:4.1f} | input {input_res} | fmt {v4l2_info.get('fmt', 'n/a')} | output {args.output}",
             f"quality {metrics['quality']:3.0f}% | bright {metrics['brightness']:3.0f} | contrast {metrics['contrast']:3.0f} | sharp {metrics['sharpness']:5.0f}",
             f"motion {metrics['motion']:4.1f} | saturation {metrics['saturation']:3.0f} | std {v4l2_info.get('std', 'n/a')}",
         ]
         draw_osd(image, osd_lines)
-        show_frame(fb_info, fb_file, image)
+        display.show(image)
 
     if cap is not None:
         cap.release()
-    fb_file.close()
+    display.close()
 
 
 if __name__ == "__main__":

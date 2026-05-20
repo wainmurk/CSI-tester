@@ -5,6 +5,7 @@ Tester for an AV-to-CSI adapter based on ADV7282-M with final video output on HD
 This profile is tuned for Raspberry Pi Zero 2 W:
 
 - HDMI output through `/dev/fb0`;
+- SDL/KMSDRM HDMI output first, direct framebuffer fallback second;
 - no 3.5" GPIO/SPI display and no LCD-show install;
 - lower default render size, `720x576`, to keep CPU/framebuffer bandwidth reasonable on Zero 2 W;
 - ADV7282-M via the Zero 2 W CSI camera connector.
@@ -63,6 +64,12 @@ Use a specific framebuffer/output size:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --fb /dev/fb0 --width 720 --height 576
+```
+
+Force direct framebuffer output instead of SDL/KMSDRM:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --output fb
 ```
 
 Rotate image:
@@ -124,4 +131,11 @@ cat /sys/class/graphics/fb0/virtual_size
 cat /sys/class/graphics/fb0/bits_per_pixel
 sudo systemctl status avcsi.service
 sudo journalctl -u avcsi.service -n 120 --no-pager
+```
+
+If the service is running and logs say `Using framebuffer /dev/fb0` but HDMI is still black, use the default SDL/KMSDRM backend:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --addr 0x21 --standard PAL --force-fullhd --output auto
+sudo reboot
 ```

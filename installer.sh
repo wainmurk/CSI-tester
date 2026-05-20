@@ -6,6 +6,7 @@ INSTALL_DIR="/opt/avcsi"
 WIDTH="720"
 HEIGHT="576"
 FB="/dev/fb0"
+OUTPUT="auto"
 DEVICE="auto"
 ROTATE="0"
 STANDARD="auto"
@@ -24,6 +25,7 @@ Options:
   --width N               HDMI output width (default: 720)
   --height N              HDMI output height (default: 576)
   --fb PATH|auto          Framebuffer (default: /dev/fb0 for HDMI)
+  --output auto|sdl|fb    HDMI output backend (default: auto, SDL/KMSDRM first)
   --device PATH|auto      V4L2 device (default: auto)
   --rotate 0|90|180|270   Rotate captured image in the app (default: 0)
   --standard auto|PAL|NTSC Analog video standard (default: auto)
@@ -41,6 +43,7 @@ while [[ $# -gt 0 ]]; do
     --width) WIDTH="$2"; shift 2 ;;
     --height) HEIGHT="$2"; shift 2 ;;
     --fb) FB="$2"; shift 2 ;;
+    --output) OUTPUT="$2"; shift 2 ;;
     --device) DEVICE="$2"; shift 2 ;;
     --rotate) ROTATE="$2"; shift 2 ;;
     --standard) STANDARD="$2"; shift 2 ;;
@@ -66,6 +69,11 @@ fi
 
 if [[ "$STANDARD" != "auto" && "$STANDARD" != "PAL" && "$STANDARD" != "NTSC" && "$STANDARD" != "SECAM" && "$STANDARD" != "pal" && "$STANDARD" != "ntsc" && "$STANDARD" != "secam" ]]; then
   echo "--standard must be auto, PAL, NTSC, or SECAM" >&2
+  exit 2
+fi
+
+if [[ "$OUTPUT" != "auto" && "$OUTPUT" != "sdl" && "$OUTPUT" != "fb" ]]; then
+  echo "--output must be auto, sdl, or fb" >&2
   exit 2
 fi
 
@@ -105,6 +113,7 @@ apt-get install -y \
   python3 \
   python3-numpy \
   python3-opencv \
+  python3-pygame \
   v4l-utils
 
 echo "[2/7] Downloading AV-CSI tester files"
@@ -124,6 +133,7 @@ echo "[3/7] Writing runtime config"
 cat >/etc/default/avcsi <<EOF
 AVCSI_WIDTH=${WIDTH}
 AVCSI_HEIGHT=${HEIGHT}
+AVCSI_OUTPUT=${OUTPUT}
 AVCSI_FB=${FB}
 AVCSI_DEVICE=${DEVICE}
 AVCSI_ROTATE=${ROTATE}
