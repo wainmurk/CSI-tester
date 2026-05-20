@@ -228,6 +228,7 @@ setterm -blank 0 -powerdown 0 -powersave off >/dev/null 2>&1 || true
 source /etc/default/avcsi 2>/dev/null || true
 export DISPLAY="${DISPLAY:-:0}"
 export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+export SDL_VIDEODRIVER=x11
 rm -f /tmp/avcsi-desktop.log
 /usr/bin/python3 /opt/avcsi/av_csi_tester.py \
   --width "${AVCSI_WIDTH:-1920}" \

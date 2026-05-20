@@ -159,14 +159,6 @@ def is_capture_device(path: str) -> bool:
     return True
 
 
-def can_open(path: str) -> bool:
-    cap = cv2.VideoCapture(path, cv2.CAP_V4L2)
-    cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
-    opened = cap.isOpened()
-    cap.release()
-    return opened
-
-
 def adv_i2c_matches() -> List[str]:
     matches = []
     for path in glob.glob("/sys/bus/i2c/devices/*/name"):
@@ -251,9 +243,8 @@ def configure_standard(device: Optional[VideoDevice], requested: str) -> str:
             run_text(["v4l2-ctl", "-d", device.path, "--set-fmt-video=width=720,height=576,pixelformat=UYVY"], timeout=1.5)
         elif standard == "NTSC":
             run_text(["v4l2-ctl", "-d", device.path, "--set-fmt-video=width=720,height=480,pixelformat=UYVY"], timeout=1.5)
-        if can_open(device.path):
-            return standard
-    return ""
+        return standard
+    return detected_standard(device) or "PAL"
 
 
 def parse_v4l2_info(device: Optional[VideoDevice]) -> Dict[str, str]:
