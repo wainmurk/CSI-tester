@@ -14,7 +14,7 @@ ADDR="auto"
 ENABLE_SERVICE="1"
 START_SERVICE="1"
 FORCE_FULLHD="0"
-KIOSK="1"
+KIOSK="0"
 
 usage() {
   cat <<'EOF'
@@ -26,13 +26,14 @@ Options:
   --width N               HDMI output width (default: 720)
   --height N              HDMI output height (default: 576)
   --fb PATH|auto          Framebuffer (default: /dev/fb0 for HDMI)
-  --output auto|sdl|fb    HDMI output backend (default: auto, SDL/KMSDRM first)
+  --output auto|desktop|sdl|fb HDMI output backend (default: desktop unless --kiosk)
   --device PATH|auto      V4L2 device (default: auto)
   --rotate 0|90|180|270   Rotate captured image in the app (default: 0)
   --standard auto|PAL|NTSC Analog video standard (default: auto)
   --addr auto|0x20|0x21 ADV7282-M I2C address for dtoverlay (default: auto)
   --force-fullhd         Force HDMI 0 to 1920x1080 and disable console blanking
-  --keep-desktop         Do not disable Raspberry Pi OS desktop/display manager
+  --kiosk                Disable desktop and run as system HDMI/KMS service
+  --keep-desktop         Keep Raspberry Pi OS desktop/display manager enabled (default)
   --no-enable             Install files without enabling the service
   --no-start              Do not start service after install
   -h, --help              Show this help
@@ -51,6 +52,7 @@ while [[ $# -gt 0 ]]; do
     --standard) STANDARD="$2"; shift 2 ;;
     --addr) ADDR="$2"; shift 2 ;;
     --force-fullhd) FORCE_FULLHD="1"; WIDTH="1920"; HEIGHT="1080"; shift ;;
+    --kiosk) KIOSK="1"; [[ "$OUTPUT" == "auto" ]] && OUTPUT="auto"; shift ;;
     --keep-desktop) KIOSK="0"; shift ;;
     --no-lcd-driver) shift ;;
     --no-enable) ENABLE_SERVICE="0"; shift ;;
@@ -75,9 +77,13 @@ if [[ "$STANDARD" != "auto" && "$STANDARD" != "PAL" && "$STANDARD" != "NTSC" && 
   exit 2
 fi
 
-if [[ "$OUTPUT" != "auto" && "$OUTPUT" != "sdl" && "$OUTPUT" != "fb" ]]; then
-  echo "--output must be auto, sdl, or fb" >&2
+if [[ "$OUTPUT" != "auto" && "$OUTPUT" != "desktop" && "$OUTPUT" != "sdl" && "$OUTPUT" != "fb" ]]; then
+  echo "--output must be auto, desktop, sdl, or fb" >&2
   exit 2
+fi
+
+if [[ "$KIOSK" == "0" && "$OUTPUT" == "auto" ]]; then
+  OUTPUT="desktop"
 fi
 
 if [[ "$ADDR" != "auto" && "$ADDR" != "0x20" && "$ADDR" != "0x21" && "$ADDR" != "20" && "$ADDR" != "21" ]]; then
@@ -147,8 +153,10 @@ echo "[4/7] Installing systemd service"
 curl -fsSL "${REPO_RAW}/avcsi.service" -o /etc/systemd/system/avcsi.service
 chmod 0644 /etc/systemd/system/avcsi.service
 systemctl daemon-reload
-if [[ "$ENABLE_SERVICE" == "1" ]]; then
+if [[ "$ENABLE_SERVICE" == "1" && "$KIOSK" == "1" ]]; then
   systemctl enable avcsi.service
+else
+  systemctl disable --now avcsi.service >/dev/null 2>&1 || true
 fi
 
 if [[ "$KIOSK" == "1" ]]; then
@@ -160,7 +168,38 @@ if [[ "$KIOSK" == "1" ]]; then
     fi
   done
 else
-  echo "Keeping desktop/display manager enabled."
+  echo "Configuring desktop autostart output."
+  systemctl set-default graphical.target || true
+  systemctl enable display-manager.service >/dev/null 2>&1 || true
+  systemctl enable lightdm.service >/dev/null 2>&1 || true
+  if command -v raspi-config >/dev/null 2>&1; then
+    raspi-config nonint do_boot_behaviour B4 >/dev/null 2>&1 || true
+  fi
+  install -d -m 0755 /etc/xdg/autostart
+  cat >/usr/local/bin/avcsi-desktop-launcher <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+sleep 3
+setterm -blank 0 -powerdown 0 -powersave off >/dev/null 2>&1 || true
+source /etc/default/avcsi 2>/dev/null || true
+exec /usr/bin/python3 /opt/avcsi/av_csi_tester.py \
+  --width "${AVCSI_WIDTH:-1920}" \
+  --height "${AVCSI_HEIGHT:-1080}" \
+  --output "${AVCSI_OUTPUT:-desktop}" \
+  --fb "${AVCSI_FB:-/dev/fb0}" \
+  --device "${AVCSI_DEVICE:-auto}" \
+  --rotate "${AVCSI_ROTATE:-0}" \
+  --standard "${AVCSI_STANDARD:-auto}" >>/tmp/avcsi-desktop.log 2>&1
+EOF
+  chmod 0755 /usr/local/bin/avcsi-desktop-launcher
+  cat >/etc/xdg/autostart/avcsi.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=AV-CSI Tester
+Exec=/usr/local/bin/avcsi-desktop-launcher
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
 fi
 
 echo "[4/7] Ensuring ADV7282-M overlay"
@@ -253,8 +292,10 @@ echo "[6/7] HDMI output selected"
 echo "Built-in 3.5 inch LCD/LCD-show is not installed by this HDMI build."
 
 echo "[7/7] Starting service"
-if [[ "$START_SERVICE" == "1" ]]; then
+if [[ "$START_SERVICE" == "1" && "$KIOSK" == "1" ]]; then
   systemctl restart avcsi.service || true
+elif [[ "$START_SERVICE" == "1" ]]; then
+  echo "Desktop autostart is installed. Reboot or log out/in to start fullscreen output."
 fi
 
 echo "Done."

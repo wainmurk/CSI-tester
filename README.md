@@ -5,9 +5,8 @@ Tester for an AV-to-CSI adapter based on ADV7282-M with final video output on HD
 This profile is tuned for Raspberry Pi Zero 2 W:
 
 - HDMI output through `/dev/fb0`;
-- SDL/KMSDRM HDMI output first, direct framebuffer fallback second;
+- desktop autostart output by default, direct KMS/service mode only with `--kiosk`;
 - no 3.5" GPIO/SPI display and no LCD-show install;
-- appliance boot: Raspberry Pi OS desktop/display manager is disabled by default so the tester owns HDMI;
 - lower default render size, `720x576`, to keep CPU/framebuffer bandwidth reasonable on Zero 2 W;
 - ADV7282-M via the Zero 2 W CSI camera connector.
 
@@ -81,10 +80,10 @@ Rotate image:
 curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --rotate 180
 ```
 
-Keep Raspberry Pi OS desktop enabled:
+Run as direct KMS system service without desktop:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --keep-desktop
+curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --addr 0x21 --standard PAL --force-fullhd --kiosk
 ```
 
 ## Behavior
@@ -93,9 +92,9 @@ curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.
 - `NO SIGNAL`: adapter is present but frames are not readable.
 - Video present: fullscreen HDMI output with OSD.
 - Hot swap: the service keeps running and repeatedly re-detects `/dev/video*`; signal loss/reconnect should recover without restarting the service once the kernel exposes the capture device again.
-- `--force-fullhd`: requests HDMI 0 as `1920x1080@60`, disables console blanking, and starts the app on `/dev/tty1`.
-- By default the installer disables the desktop/display manager. This is intentional: SDL/KMSDRM needs to own HDMI for fullscreen appliance output.
-- The service owns `/dev/tty1` and conflicts with `getty@tty1.service`, so the HDMI output is not covered by a text login prompt.
+- `--force-fullhd`: requests HDMI 0 as `1920x1080@60` and disables console blanking.
+- Default mode keeps Raspberry Pi OS desktop enabled and starts the tester fullscreen from `/etc/xdg/autostart/avcsi.desktop`.
+- `--kiosk` disables the desktop/display manager and starts `avcsi.service` directly on `/dev/tty1`.
 
 ## Service
 
@@ -110,6 +109,12 @@ Runtime config:
 ```bash
 sudo nano /etc/default/avcsi
 sudo systemctl restart avcsi.service
+```
+
+Desktop autostart log:
+
+```bash
+cat /tmp/avcsi-desktop.log
 ```
 
 ## Required Kernel Overlay
@@ -151,10 +156,10 @@ curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.
 sudo reboot
 ```
 
-If the desktop disappeared after reboot but the tester is not visible, reinstall the service and check the SDL/KMSDRM log:
+If the desktop disappeared after reboot but the tester is not visible, restore desktop autostart mode:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --addr 0x21 --standard PAL --force-fullhd --output auto
-sudo systemctl restart avcsi.service
-sudo journalctl -u avcsi.service -n 120 --no-pager
+sudo reboot
+cat /tmp/avcsi-desktop.log
 ```
