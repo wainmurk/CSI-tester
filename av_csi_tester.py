@@ -506,6 +506,7 @@ def main():
     parser.add_argument("--device", default="auto", help="V4L2 device path or auto")
     parser.add_argument("--rotate", choices=("0", "90", "180", "270"), default="0")
     parser.add_argument("--standard", choices=("auto", "PAL", "NTSC", "SECAM", "pal", "ntsc", "secam"), default="auto")
+    parser.add_argument("--ignore-signal-status", action="store_true", help="Open capture even if V4L2 reports no signal")
     args = parser.parse_args()
 
     signal.signal(signal.SIGINT, stop)
@@ -545,7 +546,7 @@ def main():
             if device is not None and active_standard:
                 v4l2_info = parse_v4l2_info(device)
                 v4l2_info["std"] = active_standard
-                if has_signal(v4l2_info):
+                if args.ignore_signal_status or has_signal(v4l2_info):
                     cap = cv2.VideoCapture(device.path, cv2.CAP_V4L2)
                     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
                     cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
@@ -573,7 +574,7 @@ def main():
         if now - last_info_check >= V4L2_INFO_RECHECK_SEC:
             last_info_check = now
             v4l2_info = parse_v4l2_info(device)
-            if not has_signal(v4l2_info):
+            if not args.ignore_signal_status and not has_signal(v4l2_info):
                 cap.release()
                 cap = None
                 prev_gray = None

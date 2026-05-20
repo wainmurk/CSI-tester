@@ -11,6 +11,7 @@ DEVICE="auto"
 ROTATE="0"
 STANDARD="auto"
 ADDR="auto"
+IGNORE_SIGNAL_STATUS="0"
 ENABLE_SERVICE="1"
 START_SERVICE="1"
 FORCE_FULLHD="0"
@@ -33,6 +34,7 @@ Options:
   --rotate 0|90|180|270   Rotate captured image in the app (default: 0)
   --standard auto|PAL|NTSC Analog video standard (default: auto)
   --addr auto|0x20|0x21 ADV7282-M I2C address for dtoverlay (default: auto)
+  --ignore-signal-status Open capture even if V4L2 reports "no signal"
   --force-fullhd         Force HDMI 0 to 1920x1080 and disable console blanking
   --kiosk                Disable desktop and run as system HDMI/KMS service
   --keep-desktop         Keep Raspberry Pi OS desktop/display manager enabled (default)
@@ -55,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --rotate) ROTATE="$2"; shift 2 ;;
     --standard) STANDARD="$2"; shift 2 ;;
     --addr) ADDR="$2"; shift 2 ;;
+    --ignore-signal-status) IGNORE_SIGNAL_STATUS="1"; shift ;;
     --force-fullhd) FORCE_FULLHD="1"; WIDTH="1920"; HEIGHT="1080"; shift ;;
     --kiosk) KIOSK="1"; [[ "$OUTPUT" == "auto" ]] && OUTPUT="auto"; shift ;;
     --keep-desktop) KIOSK="0"; shift ;;
@@ -177,6 +180,7 @@ AVCSI_FB=${FB}
 AVCSI_DEVICE=${DEVICE}
 AVCSI_ROTATE=${ROTATE}
 AVCSI_STANDARD=${STANDARD}
+AVCSI_IGNORE_SIGNAL_STATUS=${IGNORE_SIGNAL_STATUS}
 EOF
 
 echo "[4/7] Installing systemd service"
@@ -250,7 +254,8 @@ rm -f /tmp/avcsi-desktop.log
   --fb "${AVCSI_FB:-/dev/fb0}" \
   --device "${AVCSI_DEVICE:-auto}" \
   --rotate "${AVCSI_ROTATE:-0}" \
-  --standard "${AVCSI_STANDARD:-auto}" >>/tmp/avcsi-desktop.log 2>&1 &
+  --standard "${AVCSI_STANDARD:-auto}" \
+  $(if [[ "${AVCSI_IGNORE_SIGNAL_STATUS:-0}" == "1" ]]; then printf '%s' "--ignore-signal-status"; fi) >>/tmp/avcsi-desktop.log 2>&1 &
 app_pid="$!"
 for _ in $(seq 1 120); do
   wmctrl -r "AV-CSI Tester" -b add,fullscreen,above >/dev/null 2>&1 || true
