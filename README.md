@@ -17,6 +17,12 @@ PAL:
 curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --addr 0x21 --standard PAL
 ```
 
+PAL with forced FullHD HDMI output:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --addr 0x21 --standard PAL --force-fullhd
+```
+
 NTSC:
 
 ```bash
@@ -71,6 +77,7 @@ curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.
 - `NO SIGNAL`: adapter is present but frames are not readable.
 - Video present: fullscreen HDMI output with OSD.
 - Hot swap: the service keeps running and repeatedly re-detects `/dev/video*`; signal loss/reconnect should recover without restarting the service once the kernel exposes the capture device again.
+- `--force-fullhd`: requests HDMI 0 as `1920x1080@60`, disables console blanking, and starts the app on `/dev/tty1`.
 
 ## Service
 
@@ -108,4 +115,13 @@ for b in /dev/i2c-*; do sudo i2cdetect -y "${b##*-}"; done
 v4l2-ctl --list-devices
 v4l2-ctl -d /dev/video0 -D
 journalctl -u avcsi.service -n 80 --no-pager
+```
+
+If HDMI stays black on a FullHD monitor, reinstall with `--force-fullhd`, reboot, and check:
+
+```bash
+cat /sys/class/graphics/fb0/virtual_size
+cat /sys/class/graphics/fb0/bits_per_pixel
+sudo systemctl status avcsi.service
+sudo journalctl -u avcsi.service -n 120 --no-pager
 ```

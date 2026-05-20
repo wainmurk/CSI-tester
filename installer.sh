@@ -12,6 +12,7 @@ STANDARD="auto"
 ADDR="auto"
 ENABLE_SERVICE="1"
 START_SERVICE="1"
+FORCE_FULLHD="0"
 
 usage() {
   cat <<'EOF'
@@ -27,6 +28,7 @@ Options:
   --rotate 0|90|180|270   Rotate captured image in the app (default: 0)
   --standard auto|PAL|NTSC Analog video standard (default: auto)
   --addr auto|0x20|0x21 ADV7282-M I2C address for dtoverlay (default: auto)
+  --force-fullhd         Force HDMI 0 to 1920x1080 and disable console blanking
   --no-enable             Install files without enabling the service
   --no-start              Do not start service after install
   -h, --help              Show this help
@@ -43,6 +45,7 @@ while [[ $# -gt 0 ]]; do
     --rotate) ROTATE="$2"; shift 2 ;;
     --standard) STANDARD="$2"; shift 2 ;;
     --addr) ADDR="$2"; shift 2 ;;
+    --force-fullhd) FORCE_FULLHD="1"; WIDTH="1920"; HEIGHT="1080"; shift ;;
     --no-lcd-driver) shift ;;
     --no-enable) ENABLE_SERVICE="0"; shift ;;
     --no-start) START_SERVICE="0"; shift ;;
@@ -72,6 +75,25 @@ if [[ "$ADDR" != "auto" && "$ADDR" != "0x20" && "$ADDR" != "0x21" && "$ADDR" != 
 fi
 
 export DEBIAN_FRONTEND=noninteractive
+
+append_once_to_cmdline() {
+  local file="$1"
+  local token="$2"
+  [[ -f "$file" ]] || return 0
+  if ! grep -qw -- "$token" "$file"; then
+    cp "$file" "${file}.avcsi.bak"
+    sed -i "1s/$/ ${token}/" "$file"
+  fi
+}
+
+append_boot_config_once() {
+  local file="$1"
+  local line="$2"
+  [[ -f "$file" ]] || return 0
+  if ! grep -qxF "$line" "$file"; then
+    printf '%s\n' "$line" >>"$file"
+  fi
+}
 
 echo "[1/7] Installing packages"
 apt-get update
@@ -162,8 +184,29 @@ if [[ -n "$BOOT_CONFIG" ]]; then
     printf '\n[all]\n# AV-CSI ADV7282-M\n%s\n' "$OVERLAY_LINE" >>"$BOOT_CONFIG"
     echo "Added ${OVERLAY_LINE} to $BOOT_CONFIG. Reboot is required."
   fi
+  append_boot_config_once "$BOOT_CONFIG" "disable_splash=1"
+  if [[ "$FORCE_FULLHD" == "1" ]]; then
+    append_boot_config_once "$BOOT_CONFIG" "hdmi_force_hotplug=1"
+    append_boot_config_once "$BOOT_CONFIG" "hdmi_group=2"
+    append_boot_config_once "$BOOT_CONFIG" "hdmi_mode=82"
+    echo "FullHD HDMI firmware mode requested in $BOOT_CONFIG."
+  fi
 else
   echo "Boot config not found; cannot add dtoverlay=adv7282m automatically."
+fi
+
+CMDLINE_CONFIG=""
+if [[ -f /boot/firmware/cmdline.txt ]]; then
+  CMDLINE_CONFIG="/boot/firmware/cmdline.txt"
+elif [[ -f /boot/cmdline.txt ]]; then
+  CMDLINE_CONFIG="/boot/cmdline.txt"
+fi
+if [[ -n "$CMDLINE_CONFIG" ]]; then
+  append_once_to_cmdline "$CMDLINE_CONFIG" "consoleblank=0"
+  if [[ "$FORCE_FULLHD" == "1" ]]; then
+    append_once_to_cmdline "$CMDLINE_CONFIG" "video=HDMI-A-1:1920x1080M@60D"
+    echo "FullHD DRM/KMS mode requested in $CMDLINE_CONFIG."
+  fi
 fi
 
 echo "[5/7] Checking devices"

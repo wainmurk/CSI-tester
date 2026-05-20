@@ -17,6 +17,7 @@ DEFAULT_W = 720
 DEFAULT_H = 576
 DEVICE_RECHECK_SEC = 2.0
 V4L2_INFO_RECHECK_SEC = 5.0
+FB_OPEN_RETRY_SEC = 30.0
 ADV_I2C_ADDRS = {"20", "21"}
 STANDARDS = ("PAL", "NTSC", "SECAM")
 READ_FAIL_LIMIT = 8
@@ -238,6 +239,18 @@ def parse_pair(text: str, default_a: int, default_b: int) -> Tuple[int, int]:
 
 
 def open_framebuffer(path: str, width: int, height: int) -> Tuple[Framebuffer, object]:
+    deadline = time.time() + FB_OPEN_RETRY_SEC
+    last_error = ""
+    while time.time() < deadline:
+        try:
+            return open_framebuffer_once(path, width, height)
+        except OSError as exc:
+            last_error = str(exc)
+            time.sleep(0.5)
+    raise RuntimeError(f"Cannot open framebuffer {path}: {last_error}")
+
+
+def open_framebuffer_once(path: str, width: int, height: int) -> Tuple[Framebuffer, object]:
     name = fb_sys_name(path)
     sys_dir = f"/sys/class/graphics/{name}"
     fb_width, fb_height = parse_pair(read_text(f"{sys_dir}/virtual_size"), width, height)
@@ -246,6 +259,7 @@ def open_framebuffer(path: str, width: int, height: int) -> Tuple[Framebuffer, o
     bpp = int(bpp_text) if bpp_text.isdigit() else 16
     stride = int(stride_text) if stride_text.isdigit() else fb_width * max(1, bpp // 8)
     fh = open(path, "r+b", buffering=0)
+    print(f"Using framebuffer {path}: {fb_width}x{fb_height}, {bpp} bpp, stride {stride}", flush=True)
     return Framebuffer(path=path, width=fb_width, height=fb_height, bpp=bpp, stride=stride), fh
 
 

@@ -6,6 +6,10 @@ Wants=systemd-udev-settle.service
 [Service]
 Type=simple
 User=root
+StandardInput=tty
+TTYPath=/dev/tty1
+TTYReset=no
+TTYVHangup=no
 Environment=AVCSI_WIDTH=720
 Environment=AVCSI_HEIGHT=576
 Environment=AVCSI_FB=/dev/fb0
@@ -13,6 +17,9 @@ Environment=AVCSI_DEVICE=auto
 Environment=AVCSI_ROTATE=0
 Environment=AVCSI_STANDARD=auto
 EnvironmentFile=-/etc/default/avcsi
+ExecStartPre=/bin/sh -c 'test "${AVCSI_FB}" = "auto" || for i in $(seq 1 60); do [ -e "${AVCSI_FB}" ] && exit 0; sleep 1; done; exit 1'
+ExecStartPre=/bin/sh -c 'command -v chvt >/dev/null 2>&1 && chvt 1 || true'
+ExecStartPre=/bin/sh -c 'command -v setterm >/dev/null 2>&1 && setterm -blank 0 -powerdown 0 -powersave off -term linux </dev/tty1 >/dev/tty1 || true'
 ExecStart=/usr/bin/python3 /opt/avcsi/av_csi_tester.py --width ${AVCSI_WIDTH} --height ${AVCSI_HEIGHT} --fb ${AVCSI_FB} --device ${AVCSI_DEVICE} --rotate ${AVCSI_ROTATE} --standard ${AVCSI_STANDARD}
 Restart=always
 RestartSec=2
