@@ -1,4 +1,4 @@
-# AV-CSI Tester for ADV7282-M on Raspberry Pi Zero 2 W
+﻿# AV-CSI Tester for ADV7282-M on Raspberry Pi Zero 2 W
 
 Tester for an AV-to-CSI adapter based on ADV7282-M with final video output on HDMI 0.
 
@@ -92,6 +92,7 @@ curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.
 - `NO SIGNAL`: adapter is present but frames are not readable.
 - Video present: fullscreen HDMI output with OSD.
 - Hot swap: the service keeps running and repeatedly re-detects `/dev/video*`; signal loss/reconnect should recover without restarting the service once the kernel exposes the capture device again.
+- Auto standard: with `--standard auto`, the app reads `v4l2-ctl --get-detected-standard`, sets PAL/NTSC/SECAM automatically, adjusts capture size, and shows detected/active standard in OSD.
 - `--force-fullhd`: requests HDMI 0 as `1920x1080@60` and disables console blanking.
 - Default mode keeps Raspberry Pi OS desktop enabled and starts the tester fullscreen from `/etc/xdg/autostart/avcsi.desktop`.
 - The installer writes user autostart entries for XDG, LXDE, labwc, and a user systemd service because Raspberry Pi OS variants do not all honor the same autostart path.

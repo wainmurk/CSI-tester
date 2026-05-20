@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 import argparse
 import glob
 import os
@@ -20,6 +20,11 @@ V4L2_INFO_RECHECK_SEC = 5.0
 FB_OPEN_RETRY_SEC = 30.0
 ADV_I2C_ADDRS = {"20", "21"}
 STANDARDS = ("PAL", "NTSC", "SECAM")
+STANDARD_FORMATS = {
+    "PAL": (720, 576),
+    "SECAM": (720, 576),
+    "NTSC": (720, 480),
+}
 READ_FAIL_LIMIT = 8
 
 RUNNING = True
@@ -264,10 +269,23 @@ def detected_standard(device: Optional[VideoDevice]) -> str:
     if device is None:
         return ""
     text = run_text(["v4l2-ctl", "-d", device.path, "--get-detected-standard"], timeout=1.5)
+    return canonical_standard(text)
+
+
+def canonical_standard(text: str) -> str:
     for standard in STANDARDS:
         if standard.lower() in text.lower():
             return standard
     return ""
+
+
+def set_standard(device: VideoDevice, standard: str):
+    width, height = STANDARD_FORMATS.get(standard, (720, 576))
+    run_text(["v4l2-ctl", "-d", device.path, "--set-standard", standard], timeout=1.5)
+    run_text(
+        ["v4l2-ctl", "-d", device.path, f"--set-fmt-video=width={width},height={height},pixelformat=UYVY"],
+        timeout=1.5,
+    )
 
 
 def configure_standard(device: Optional[VideoDevice], requested: str) -> str:
@@ -277,21 +295,23 @@ def configure_standard(device: Optional[VideoDevice], requested: str) -> str:
     candidates = []
     if requested != "auto":
         candidates.append(requested.upper())
-    detected = detected_standard(device)
-    if detected:
-        candidates.append(detected)
-    candidates.extend(STANDARDS)
+    else:
+        detected = ""
+        for _ in range(12):
+            detected = detected_standard(device)
+            if detected:
+                break
+            time.sleep(0.25)
+        if detected:
+            candidates.append(detected)
+        candidates.extend(STANDARDS)
 
     tried = set()
     for standard in candidates:
         if standard in tried:
             continue
         tried.add(standard)
-        run_text(["v4l2-ctl", "-d", device.path, "--set-standard", standard], timeout=1.5)
-        if standard == "PAL":
-            run_text(["v4l2-ctl", "-d", device.path, "--set-fmt-video=width=720,height=576,pixelformat=UYVY"], timeout=1.5)
-        elif standard == "NTSC":
-            run_text(["v4l2-ctl", "-d", device.path, "--set-fmt-video=width=720,height=480,pixelformat=UYVY"], timeout=1.5)
+        set_standard(device, standard)
         return standard
     return detected_standard(device) or "PAL"
 
@@ -326,6 +346,9 @@ def parse_v4l2_info(device: Optional[VideoDevice]) -> Dict[str, str]:
         info["video_input"] = video_input.group(1).strip()
         if "no signal" in video_input.group(1).lower():
             info["status"] = "no signal"
+    detected = detected_standard(device)
+    if detected:
+        info["detected_std"] = detected
 
     return info
 
@@ -527,6 +550,7 @@ def main():
     last_frame_time = time.time()
     fps = 0.0
     read_failures = 0
+    active_standard = ""
 
     while RUNNING:
         now = time.time()
@@ -538,6 +562,7 @@ def main():
                 device = None
                 prev_gray = None
                 v4l2_info = {}
+                active_standard = ""
 
         if cap is None and now - last_device_check >= DEVICE_RECHECK_SEC:
             last_device_check = now
@@ -545,7 +570,7 @@ def main():
             active_standard = configure_standard(device, args.standard)
             if device is not None and active_standard:
                 v4l2_info = parse_v4l2_info(device)
-                v4l2_info["std"] = active_standard
+                v4l2_info["active_std"] = active_standard
                 if args.ignore_signal_status or has_signal(v4l2_info):
                     cap = cv2.VideoCapture(device.path, cv2.CAP_V4L2)
                     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -574,6 +599,19 @@ def main():
         if now - last_info_check >= V4L2_INFO_RECHECK_SEC:
             last_info_check = now
             v4l2_info = parse_v4l2_info(device)
+            detected = v4l2_info.get("detected_std", "")
+            if args.standard == "auto" and detected and active_standard and detected != active_standard:
+                cap.release()
+                set_standard(device, detected)
+                active_standard = detected
+                v4l2_info = parse_v4l2_info(device)
+                v4l2_info["active_std"] = active_standard
+                cap = cv2.VideoCapture(device.path, cv2.CAP_V4L2)
+                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
+                prev_gray = None
+                read_failures = 0
+                continue
             if not args.ignore_signal_status and not has_signal(v4l2_info):
                 cap.release()
                 cap = None
@@ -622,7 +660,7 @@ def main():
             f"ADV7282-M tester | {device.path if device else 'auto'} | {status}",
             f"FPS {fps:4.1f} | input {input_res} | fmt {v4l2_info.get('fmt', 'n/a')} | output {args.output}",
             f"quality {metrics['quality']:3.0f}% | bright {metrics['brightness']:3.0f} | contrast {metrics['contrast']:3.0f} | sharp {metrics['sharpness']:5.0f}",
-            f"motion {metrics['motion']:4.1f} | saturation {metrics['saturation']:3.0f} | std {v4l2_info.get('std', 'n/a')}",
+            f"motion {metrics['motion']:4.1f} | saturation {metrics['saturation']:3.0f} | detected {v4l2_info.get('detected_std', 'n/a')} | active {active_standard or v4l2_info.get('active_std', 'n/a')}",
         ]
         draw_osd(image, osd_lines)
         display.show(image)
