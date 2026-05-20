@@ -21,7 +21,6 @@ FB_OPEN_RETRY_SEC = 30.0
 ADV_I2C_ADDRS = {"20", "21"}
 STANDARDS = ("PAL", "NTSC", "SECAM")
 READ_FAIL_LIMIT = 8
-READ_WAIT_NOTICE_SEC = 1.0
 
 RUNNING = True
 
@@ -162,6 +161,7 @@ def is_capture_device(path: str) -> bool:
 
 def can_open(path: str) -> bool:
     cap = cv2.VideoCapture(path, cv2.CAP_V4L2)
+    cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
     opened = cap.isOpened()
     cap.release()
     return opened
@@ -472,7 +472,6 @@ def main():
     last_frame_time = time.time()
     fps = 0.0
     read_failures = 0
-    last_wait_notice = 0.0
 
     while RUNNING:
         now = time.time()
@@ -492,6 +491,7 @@ def main():
             if device is not None and active_standard:
                 cap = cv2.VideoCapture(device.path, cv2.CAP_V4L2)
                 cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
                 prev_gray = None
                 read_failures = 0
                 v4l2_info = parse_v4l2_info(device)
@@ -515,16 +515,6 @@ def main():
         if now - last_info_check >= V4L2_INFO_RECHECK_SEC:
             last_info_check = now
             v4l2_info = parse_v4l2_info(device)
-
-        if now - last_wait_notice >= READ_WAIT_NOTICE_SEC:
-            last_wait_notice = now
-            image = draw_center(width, height, "WAITING FRAME", f"{device.path if device else 'auto'} read pending", (30, 180, 245))
-            draw_osd(image, [
-                f"ADV7282-M tester | {device.path if device else 'auto'}",
-                f"input {v4l2_info.get('input', 'n/a')} | fmt {v4l2_info.get('fmt', 'n/a')} | std {v4l2_info.get('std', 'n/a')}",
-                "If this stays here, V4L2 is blocking while waiting for analog video.",
-            ])
-            display.show(image)
 
         ok, frame = cap.read()
         if not ok or frame is None:
