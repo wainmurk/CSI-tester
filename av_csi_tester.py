@@ -261,6 +261,7 @@ def parse_v4l2_info(device: Optional[VideoDevice]) -> Dict[str, str]:
     field = re.search(r"Field\s*:\s*([^\n]+)", text)
     standard = re.search(r"Video Standard\s*=\s*([^\n]+)", text)
     input_status = re.search(r"Input Status\s*:\s*([^\n]+)", text)
+    video_input = re.search(r"Video input\s*:\s*([^\n]+)", text)
 
     if width:
         info["input"] = f"{width.group(1)}x{width.group(2)}"
@@ -272,8 +273,17 @@ def parse_v4l2_info(device: Optional[VideoDevice]) -> Dict[str, str]:
         info["std"] = standard.group(1).strip()
     if input_status:
         info["status"] = input_status.group(1).strip()
+    if video_input:
+        info["video_input"] = video_input.group(1).strip()
+        if "no signal" in video_input.group(1).lower():
+            info["status"] = "no signal"
 
     return info
+
+
+def has_signal(info: Dict[str, str]) -> bool:
+    status = " ".join((info.get("status", ""), info.get("video_input", ""))).lower()
+    return "no signal" not in status
 
 
 def choose_framebuffer(requested: str) -> str:
@@ -480,17 +490,21 @@ def main():
             device = select_device(args.device)
             active_standard = configure_standard(device, args.standard)
             if device is not None and active_standard:
-                cap = cv2.VideoCapture(device.path, cv2.CAP_V4L2)
-                cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
-                prev_gray = None
-                read_failures = 0
                 v4l2_info = parse_v4l2_info(device)
                 v4l2_info["std"] = active_standard
+                if has_signal(v4l2_info):
+                    cap = cv2.VideoCapture(device.path, cv2.CAP_V4L2)
+                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                    cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
+                    prev_gray = None
+                    read_failures = 0
 
         if cap is None:
             i2c_matches = adv_i2c_matches()
-            if i2c_matches:
+            if device is not None and v4l2_info and not has_signal(v4l2_info):
+                detail = f"{device.path} {v4l2_info.get('video_input', 'no signal')}"
+                image = draw_center(width, height, "NO SIGNAL", detail, (30, 180, 245))
+            elif i2c_matches:
                 detail = f"I2C {', '.join(i2c_matches[:2])}, no V4L2 frames"
                 image = draw_center(width, height, "NO SIGNAL", detail, (30, 180, 245))
             elif device is not None:
@@ -506,6 +520,14 @@ def main():
         if now - last_info_check >= V4L2_INFO_RECHECK_SEC:
             last_info_check = now
             v4l2_info = parse_v4l2_info(device)
+            if not has_signal(v4l2_info):
+                cap.release()
+                cap = None
+                prev_gray = None
+                image = draw_center(width, height, "NO SIGNAL", f"{device.path if device else 'auto'} {v4l2_info.get('video_input', '')}", (30, 180, 245))
+                display.show(image)
+                time.sleep(0.2)
+                continue
 
         ok, frame = cap.read()
         if not ok or frame is None:
