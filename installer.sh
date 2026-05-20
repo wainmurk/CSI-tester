@@ -15,6 +15,7 @@ ENABLE_SERVICE="1"
 START_SERVICE="1"
 FORCE_FULLHD="0"
 KIOSK="0"
+TARGET_USER="${SUDO_USER:-${USER:-pi}}"
 
 usage() {
   cat <<'EOF'
@@ -34,6 +35,7 @@ Options:
   --force-fullhd         Force HDMI 0 to 1920x1080 and disable console blanking
   --kiosk                Disable desktop and run as system HDMI/KMS service
   --keep-desktop         Keep Raspberry Pi OS desktop/display manager enabled (default)
+  --user USER            Desktop user for fullscreen autostart (default: sudo user)
   --no-enable             Install files without enabling the service
   --no-start              Do not start service after install
   -h, --help              Show this help
@@ -54,6 +56,7 @@ while [[ $# -gt 0 ]]; do
     --force-fullhd) FORCE_FULLHD="1"; WIDTH="1920"; HEIGHT="1080"; shift ;;
     --kiosk) KIOSK="1"; [[ "$OUTPUT" == "auto" ]] && OUTPUT="auto"; shift ;;
     --keep-desktop) KIOSK="0"; shift ;;
+    --user) TARGET_USER="$2"; shift 2 ;;
     --no-lcd-driver) shift ;;
     --no-enable) ENABLE_SERVICE="0"; shift ;;
     --no-start) START_SERVICE="0"; shift ;;
@@ -84,6 +87,11 @@ fi
 
 if [[ "$KIOSK" == "0" && "$OUTPUT" == "auto" ]]; then
   OUTPUT="desktop"
+fi
+
+TARGET_HOME="$(getent passwd "$TARGET_USER" | cut -d: -f6 || true)"
+if [[ -z "$TARGET_HOME" ]]; then
+  TARGET_HOME="/home/${TARGET_USER}"
 fi
 
 if [[ "$ADDR" != "auto" && "$ADDR" != "0x20" && "$ADDR" != "0x21" && "$ADDR" != "20" && "$ADDR" != "21" ]]; then
@@ -180,7 +188,12 @@ else
   cat >/usr/local/bin/avcsi-desktop-launcher <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
-sleep 3
+for _ in $(seq 1 60); do
+  if [[ -n "${DISPLAY:-}" ]] || [[ -S /tmp/.X11-unix/X0 ]]; then
+    break
+  fi
+  sleep 1
+done
 setterm -blank 0 -powerdown 0 -powersave off >/dev/null 2>&1 || true
 source /etc/default/avcsi 2>/dev/null || true
 export DISPLAY="${DISPLAY:-:0}"
@@ -204,11 +217,35 @@ done
 wait "$app_pid"
 EOF
   chmod 0755 /usr/local/bin/avcsi-desktop-launcher
+  cat >/etc/systemd/system/avcsi-desktop.service <<EOF
+[Unit]
+Description=AV-CSI Tester desktop fullscreen launcher
+After=graphical.target display-manager.service
+Wants=graphical.target
+
+[Service]
+Type=simple
+User=${TARGET_USER}
+Group=${TARGET_USER}
+Environment=HOME=${TARGET_HOME}
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=${TARGET_HOME}/.Xauthority
+ExecStart=/usr/local/bin/avcsi-desktop-launcher
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=graphical.target
+EOF
+  systemctl daemon-reload
+  if [[ "$ENABLE_SERVICE" == "1" ]]; then
+    systemctl enable avcsi-desktop.service >/dev/null 2>&1 || true
+  fi
   cat >/etc/xdg/autostart/avcsi.desktop <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=AV-CSI Tester
-Exec=/usr/local/bin/avcsi-desktop-launcher
+Exec=sh -c 'pgrep -f av_csi_tester.py >/dev/null || /usr/local/bin/avcsi-desktop-launcher'
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
@@ -316,7 +353,8 @@ echo "[7/7] Starting service"
 if [[ "$START_SERVICE" == "1" && "$KIOSK" == "1" ]]; then
   systemctl restart avcsi.service || true
 elif [[ "$START_SERVICE" == "1" ]]; then
-  echo "Desktop autostart is installed. Reboot or log out/in to start fullscreen output."
+  systemctl restart avcsi-desktop.service || true
+  echo "Desktop autostart is installed. Reboot or log out/in if fullscreen output does not appear."
 fi
 
 echo "Done."
