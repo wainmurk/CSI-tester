@@ -76,11 +76,19 @@ class SdlDisplay:
         self.pygame = pygame
         pygame.init()
         pygame.mouse.set_visible(False)
+        pygame.display.set_caption("AV-CSI Tester")
         info = pygame.display.Info()
         self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         self.width = self.screen.get_width() or info.current_w or width
         self.height = self.screen.get_height() or info.current_h or height
+        self.raise_window()
         print(f"Using SDL display: {self.width}x{self.height}, driver {pygame.display.get_driver()}", flush=True)
+
+    def raise_window(self):
+        for _ in range(10):
+            run_text(["wmctrl", "-r", "AV-CSI Tester", "-b", "add,fullscreen,above"], timeout=0.5)
+            run_text(["wmctrl", "-a", "AV-CSI Tester"], timeout=0.5)
+            time.sleep(0.2)
 
     def show(self, image: np.ndarray):
         if image.shape[1] != self.width or image.shape[0] != self.height:

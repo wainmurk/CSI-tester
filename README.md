@@ -117,6 +117,13 @@ Desktop autostart log:
 cat /tmp/avcsi-desktop.log
 ```
 
+If the app is running but the desktop is still visible, bring the tester window to the front:
+
+```bash
+DISPLAY=:0 wmctrl -r "AV-CSI Tester" -b add,fullscreen,above
+DISPLAY=:0 wmctrl -a "AV-CSI Tester"
+```
+
 ## Required Kernel Overlay
 
 The installer places the ADV7282-M overlay under `[all]`:

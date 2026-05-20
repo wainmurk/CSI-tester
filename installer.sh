@@ -123,6 +123,7 @@ apt-get install -y \
   python3-numpy \
   python3-opencv \
   python3-pygame \
+  wmctrl \
   v4l-utils
 
 echo "[2/7] Downloading AV-CSI tester files"
@@ -182,14 +183,25 @@ set -euo pipefail
 sleep 3
 setterm -blank 0 -powerdown 0 -powersave off >/dev/null 2>&1 || true
 source /etc/default/avcsi 2>/dev/null || true
-exec /usr/bin/python3 /opt/avcsi/av_csi_tester.py \
+export DISPLAY="${DISPLAY:-:0}"
+export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
+rm -f /tmp/avcsi-desktop.log
+/usr/bin/python3 /opt/avcsi/av_csi_tester.py \
   --width "${AVCSI_WIDTH:-1920}" \
   --height "${AVCSI_HEIGHT:-1080}" \
   --output "${AVCSI_OUTPUT:-desktop}" \
   --fb "${AVCSI_FB:-/dev/fb0}" \
   --device "${AVCSI_DEVICE:-auto}" \
   --rotate "${AVCSI_ROTATE:-0}" \
-  --standard "${AVCSI_STANDARD:-auto}" >>/tmp/avcsi-desktop.log 2>&1
+  --standard "${AVCSI_STANDARD:-auto}" >>/tmp/avcsi-desktop.log 2>&1 &
+app_pid="$!"
+for _ in $(seq 1 30); do
+  wmctrl -r "AV-CSI Tester" -b add,fullscreen,above >/dev/null 2>&1 || true
+  wmctrl -a "AV-CSI Tester" >/dev/null 2>&1 || true
+  sleep 1
+  kill -0 "$app_pid" 2>/dev/null || exit 0
+done
+wait "$app_pid"
 EOF
   chmod 0755 /usr/local/bin/avcsi-desktop-launcher
   cat >/etc/xdg/autostart/avcsi.desktop <<'EOF'
@@ -200,6 +212,15 @@ Exec=/usr/local/bin/avcsi-desktop-launcher
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
+  cat >/etc/xdg/autostart/avcsi-raise.desktop <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=AV-CSI Tester Raise
+Exec=sh -c 'sleep 8; for i in $(seq 1 20); do wmctrl -r "AV-CSI Tester" -b add,fullscreen,above; wmctrl -a "AV-CSI Tester"; sleep 2; done'
+Terminal=false
+X-GNOME-Autostart-enabled=true
+EOF
+  rm -f /etc/xdg/autostart/avcsi.desktop.bak 2>/dev/null || true
 fi
 
 echo "[4/7] Ensuring ADV7282-M overlay"
