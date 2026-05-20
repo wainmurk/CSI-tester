@@ -91,7 +91,7 @@ curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.
 - `NO ADAPTER`: ADV7282-M is not bound by the kernel or `/dev/video0` is not available.
 - `NO SIGNAL`: adapter is present but frames are not readable.
 - Video present: fullscreen HDMI output with OSD.
-- Hot swap: the service keeps running and repeatedly re-detects `/dev/video*`; signal loss/reconnect should recover without restarting the service once the kernel exposes the capture device again.
+- Hot swap: the app keeps running, shows `NO SIGNAL` when frames stop, and repeatedly re-detects/reopens `/dev/video*` after signal loss or reconnect.
 - `--force-fullhd`: requests HDMI 0 as `1920x1080@60` and disables console blanking.
 - Default mode keeps Raspberry Pi OS desktop enabled and starts the tester fullscreen from `/etc/xdg/autostart/avcsi.desktop`.
 - The installer writes user autostart entries for XDG, LXDE, labwc, and a user systemd service because Raspberry Pi OS variants do not all honor the same autostart path.

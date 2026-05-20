@@ -2,9 +2,11 @@
 import argparse
 import glob
 import os
+import queue
 import re
 import signal
 import subprocess
+import threading
 import time
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Protocol, Tuple
@@ -21,6 +23,8 @@ FB_OPEN_RETRY_SEC = 30.0
 ADV_I2C_ADDRS = {"20", "21"}
 STANDARDS = ("PAL", "NTSC", "SECAM")
 READ_FAIL_LIMIT = 8
+CAPTURE_STALE_SEC = 2.0
+FRAME_QUEUE_SIZE = 2
 
 RUNNING = True
 
@@ -38,6 +42,59 @@ class Framebuffer:
     height: int
     bpp: int
     stride: int
+
+
+class CaptureWorker:
+    def __init__(self, device: VideoDevice):
+        self.device = device
+        self.frames: "queue.Queue[np.ndarray]" = queue.Queue(maxsize=FRAME_QUEUE_SIZE)
+        self.stop_event = threading.Event()
+        self.last_frame_time = 0.0
+        self.last_error = ""
+        self.thread = threading.Thread(target=self.run, daemon=True)
+        self.thread.start()
+
+    def run(self):
+        cap = cv2.VideoCapture(self.device.path, cv2.CAP_V4L2)
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
+        if not cap.isOpened():
+            self.last_error = "cannot open"
+            cap.release()
+            return
+        while not self.stop_event.is_set() and RUNNING:
+            ok, frame = cap.read()
+            if not ok or frame is None:
+                self.last_error = "read failed"
+                time.sleep(0.05)
+                continue
+            self.last_frame_time = time.time()
+            self.last_error = ""
+            try:
+                while True:
+                    self.frames.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                self.frames.put_nowait(frame)
+            except queue.Full:
+                pass
+        cap.release()
+
+    def read_latest(self) -> Optional[np.ndarray]:
+        frame = None
+        try:
+            while True:
+                frame = self.frames.get_nowait()
+        except queue.Empty:
+            return frame
+
+    def stale(self, max_age: float = CAPTURE_STALE_SEC) -> bool:
+        return self.last_frame_time <= 0.0 or (time.time() - self.last_frame_time) > max_age
+
+    def stop(self):
+        self.stop_event.set()
+        self.thread.join(timeout=0.4)
 
 
 class Display(Protocol):
@@ -518,7 +575,7 @@ def main():
     height = display.height
     display.show(draw_center(width, height, "STARTING", "Initializing HDMI output and CSI capture", (245, 245, 245)))
 
-    cap = None
+    capture: Optional[CaptureWorker] = None
     device: Optional[VideoDevice] = None
     prev_gray: Optional[np.ndarray] = None
     v4l2_info: Dict[str, str] = {}
@@ -530,16 +587,16 @@ def main():
 
     while RUNNING:
         now = time.time()
-        if cap is not None and device is not None and now - last_device_check >= DEVICE_RECHECK_SEC:
+        if capture is not None and device is not None and now - last_device_check >= DEVICE_RECHECK_SEC:
             last_device_check = now
             if not os.path.exists(device.path):
-                cap.release()
-                cap = None
+                capture.stop()
+                capture = None
                 device = None
                 prev_gray = None
                 v4l2_info = {}
 
-        if cap is None and now - last_device_check >= DEVICE_RECHECK_SEC:
+        if capture is None and now - last_device_check >= DEVICE_RECHECK_SEC:
             last_device_check = now
             device = select_device(args.device)
             active_standard = configure_standard(device, args.standard)
@@ -547,13 +604,11 @@ def main():
                 v4l2_info = parse_v4l2_info(device)
                 v4l2_info["std"] = active_standard
                 if args.ignore_signal_status or has_signal(v4l2_info):
-                    cap = cv2.VideoCapture(device.path, cv2.CAP_V4L2)
-                    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                    cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
+                    capture = CaptureWorker(device)
                     prev_gray = None
                     read_failures = 0
 
-        if cap is None:
+        if capture is None:
             i2c_matches = adv_i2c_matches()
             if device is not None and v4l2_info and not has_signal(v4l2_info):
                 detail = f"{device.path} {v4l2_info.get('video_input', 'no signal')}"
@@ -575,22 +630,29 @@ def main():
             last_info_check = now
             v4l2_info = parse_v4l2_info(device)
             if not args.ignore_signal_status and not has_signal(v4l2_info):
-                cap.release()
-                cap = None
+                capture.stop()
+                capture = None
                 prev_gray = None
                 image = draw_center(width, height, "NO SIGNAL", f"{device.path if device else 'auto'} {v4l2_info.get('video_input', '')}", (30, 180, 245))
                 display.show(image)
                 time.sleep(0.2)
                 continue
 
-        ok, frame = cap.read()
-        if not ok or frame is None:
+        frame = capture.read_latest()
+        if frame is None:
             read_failures += 1
-            image = draw_center(width, height, "NO SIGNAL", "Adapter is present, waiting for video", (30, 180, 245))
+            status_detail = capture.last_error or "waiting for video"
+            image = draw_center(width, height, "NO SIGNAL", f"{device.path if device else 'auto'} {status_detail}", (30, 180, 245))
+            display.show(image)
+            time.sleep(0.2)
+            continue
+        if capture.stale(CAPTURE_STALE_SEC):
+            read_failures += 1
+            image = draw_center(width, height, "NO SIGNAL", f"{device.path if device else 'auto'} no fresh frames", (30, 180, 245))
             display.show(image)
             if read_failures >= READ_FAIL_LIMIT:
-                cap.release()
-                cap = None
+                capture.stop()
+                capture = None
                 prev_gray = None
                 v4l2_info = {}
             time.sleep(0.2)
@@ -617,7 +679,7 @@ def main():
         metrics, prev_gray = quality_metrics(prev_gray, rgb_for_metrics, fps)
 
         status = v4l2_info.get("status", "OK")
-        input_res = v4l2_info.get("input", f"{int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))}x{int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))}")
+        input_res = v4l2_info.get("input", f"{frame.shape[1]}x{frame.shape[0]}")
         osd_lines = [
             f"ADV7282-M tester | {device.path if device else 'auto'} | {status}",
             f"FPS {fps:4.1f} | input {input_res} | fmt {v4l2_info.get('fmt', 'n/a')} | output {args.output}",
@@ -627,8 +689,8 @@ def main():
         draw_osd(image, osd_lines)
         display.show(image)
 
-    if cap is not None:
-        cap.release()
+    if capture is not None:
+        capture.stop()
     display.close()
 
 
