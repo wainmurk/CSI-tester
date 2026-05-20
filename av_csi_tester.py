@@ -327,17 +327,26 @@ def detected_standard(device: Optional[VideoDevice]) -> str:
     return ""
 
 
-def configure_standard(device: Optional[VideoDevice], requested: str) -> str:
+def configure_standard(device: Optional[VideoDevice], requested: str, attempt: int = 0) -> str:
     if device is None:
         return ""
 
     candidates = []
     if requested != "auto":
         candidates.append(requested.upper())
-    detected = detected_standard(device)
-    if detected:
-        candidates.append(detected)
-    candidates.extend(STANDARDS)
+    else:
+        detected = detected_standard(device)
+        auto_candidates = []
+        if detected:
+            auto_candidates.append(detected)
+        auto_candidates.extend(STANDARDS)
+        deduped = []
+        for standard in auto_candidates:
+            if standard not in deduped:
+                deduped.append(standard)
+        if deduped:
+            offset = attempt % len(deduped)
+            candidates.extend(deduped[offset:] + deduped[:offset])
 
     tried = set()
     for standard in candidates:
@@ -584,6 +593,7 @@ def main():
     last_frame_time = time.time()
     fps = 0.0
     read_failures = 0
+    standard_attempt = 0
 
     while RUNNING:
         now = time.time()
@@ -599,7 +609,7 @@ def main():
         if capture is None and now - last_device_check >= DEVICE_RECHECK_SEC:
             last_device_check = now
             device = select_device(args.device)
-            active_standard = configure_standard(device, args.standard)
+            active_standard = configure_standard(device, args.standard, standard_attempt)
             if device is not None and active_standard:
                 v4l2_info = parse_v4l2_info(device)
                 v4l2_info["std"] = active_standard
@@ -643,21 +653,41 @@ def main():
             read_failures += 1
             status_detail = capture.last_error or "waiting for video"
             image = draw_center(width, height, "NO SIGNAL", f"{device.path if device else 'auto'} {status_detail}", (30, 180, 245))
-            display.show(image)
-            time.sleep(0.2)
-            continue
-        if capture.stale(CAPTURE_STALE_SEC):
-            read_failures += 1
-            image = draw_center(width, height, "NO SIGNAL", f"{device.path if device else 'auto'} no fresh frames", (30, 180, 245))
+            draw_osd(image, [
+                f"retry {read_failures}/{READ_FAIL_LIMIT} | std attempt {standard_attempt} | configured {v4l2_info.get('std', 'n/a')}",
+                "Hotplug active: reconnect source or wait for standard re-detect.",
+            ])
             display.show(image)
             if read_failures >= READ_FAIL_LIMIT:
                 capture.stop()
                 capture = None
                 prev_gray = None
                 v4l2_info = {}
+                read_failures = 0
+                if args.standard == "auto":
+                    standard_attempt += 1
+            time.sleep(0.2)
+            continue
+        if capture.stale(CAPTURE_STALE_SEC):
+            read_failures += 1
+            image = draw_center(width, height, "NO SIGNAL", f"{device.path if device else 'auto'} no fresh frames", (30, 180, 245))
+            draw_osd(image, [
+                f"retry {read_failures}/{READ_FAIL_LIMIT} | std attempt {standard_attempt} | configured {v4l2_info.get('std', 'n/a')}",
+                "Hotplug active: reopening capture if frames do not return.",
+            ])
+            display.show(image)
+            if read_failures >= READ_FAIL_LIMIT:
+                capture.stop()
+                capture = None
+                prev_gray = None
+                v4l2_info = {}
+                read_failures = 0
+                if args.standard == "auto":
+                    standard_attempt += 1
             time.sleep(0.2)
             continue
         read_failures = 0
+        standard_attempt = 0
 
         current_time = time.time()
         dt = max(0.001, current_time - last_frame_time)
