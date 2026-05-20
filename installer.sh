@@ -185,6 +185,11 @@ else
     raspi-config nonint do_boot_behaviour B4 >/dev/null 2>&1 || true
   fi
   install -d -m 0755 /etc/xdg/autostart
+  install -d -m 0755 "${TARGET_HOME}/.config/autostart"
+  install -d -m 0755 "${TARGET_HOME}/.config/lxsession/LXDE-pi"
+  install -d -m 0755 "${TARGET_HOME}/.config/lxsession/LXDE"
+  install -d -m 0755 "${TARGET_HOME}/.config/labwc"
+  install -d -m 0755 "${TARGET_HOME}/.config/systemd/user"
   cat >/usr/local/bin/avcsi-desktop-launcher <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -247,6 +252,7 @@ Exec=sh -c 'sleep 8; pgrep -f av_csi_tester.py >/dev/null || /usr/local/bin/avcs
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
+  cp /etc/xdg/autostart/avcsi.desktop "${TARGET_HOME}/.config/autostart/avcsi.desktop"
   cat >/etc/xdg/autostart/avcsi-raise.desktop <<'EOF'
 [Desktop Entry]
 Type=Application
@@ -255,6 +261,33 @@ Exec=sh -c 'sleep 8; for i in $(seq 1 20); do wmctrl -r "AV-CSI Tester" -b add,f
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
+  cp /etc/xdg/autostart/avcsi-raise.desktop "${TARGET_HOME}/.config/autostart/avcsi-raise.desktop"
+  cat >"${TARGET_HOME}/.config/lxsession/LXDE-pi/autostart" <<'EOF'
+@/usr/local/bin/avcsi-desktop-launcher
+EOF
+  cat >"${TARGET_HOME}/.config/lxsession/LXDE/autostart" <<'EOF'
+@/usr/local/bin/avcsi-desktop-launcher
+EOF
+  cat >"${TARGET_HOME}/.config/labwc/autostart" <<'EOF'
+/usr/local/bin/avcsi-desktop-launcher &
+EOF
+  cat >"${TARGET_HOME}/.config/systemd/user/avcsi-desktop-user.service" <<'EOF'
+[Unit]
+Description=AV-CSI Tester user desktop launcher
+
+[Service]
+Type=simple
+Environment=DISPLAY=:0
+ExecStart=/usr/local/bin/avcsi-desktop-launcher
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
+EOF
+  chown -R "${TARGET_USER}:${TARGET_USER}" "${TARGET_HOME}/.config"
+  sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" systemctl --user daemon-reload >/dev/null 2>&1 || true
+  sudo -u "$TARGET_USER" XDG_RUNTIME_DIR="/run/user/$(id -u "$TARGET_USER")" systemctl --user enable avcsi-desktop-user.service >/dev/null 2>&1 || true
   rm -f /etc/xdg/autostart/avcsi.desktop.bak 2>/dev/null || true
 fi
 

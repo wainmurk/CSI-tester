@@ -94,6 +94,7 @@ curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.
 - Hot swap: the service keeps running and repeatedly re-detects `/dev/video*`; signal loss/reconnect should recover without restarting the service once the kernel exposes the capture device again.
 - `--force-fullhd`: requests HDMI 0 as `1920x1080@60` and disables console blanking.
 - Default mode keeps Raspberry Pi OS desktop enabled and starts the tester fullscreen from `/etc/xdg/autostart/avcsi.desktop`.
+- The installer writes user autostart entries for XDG, LXDE, labwc, and a user systemd service because Raspberry Pi OS variants do not all honor the same autostart path.
 - Desktop mode uses XDG autostart inside the real user session. `avcsi-desktop.service` is installed for debugging but disabled by default because SDL/X11 can show a black fullscreen window when started outside the session.
 - `--kiosk` disables the desktop/display manager and starts `avcsi.service` directly on `/dev/tty1`.
 
