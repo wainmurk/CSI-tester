@@ -67,8 +67,11 @@ class FramebufferDisplay:
 
 class SdlDisplay:
     def __init__(self, width: int, height: int, driver: str = "kmsdrm"):
+        self.desktop_mode = not driver
         if driver:
             os.environ.setdefault("SDL_VIDEODRIVER", driver)
+        else:
+            os.environ.setdefault("SDL_VIDEO_WINDOW_POS", "0,0")
         os.environ.setdefault("SDL_NOMOUSE", "1")
         os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
         import pygame
@@ -78,15 +81,24 @@ class SdlDisplay:
         pygame.mouse.set_visible(False)
         pygame.display.set_caption("AV-CSI Tester")
         info = pygame.display.Info()
-        self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
+        if self.desktop_mode:
+            screen_w = info.current_w if info.current_w > 0 else width
+            screen_h = info.current_h if info.current_h > 0 else height
+            self.screen = pygame.display.set_mode((screen_w, screen_h), pygame.NOFRAME)
+        else:
+            self.screen = pygame.display.set_mode((0, 0), pygame.FULLSCREEN)
         self.width = self.screen.get_width() or info.current_w or width
         self.height = self.screen.get_height() or info.current_h or height
+        self.screen.fill((20, 20, 20))
+        pygame.display.flip()
         self.raise_window()
         print(f"Using SDL display: {self.width}x{self.height}, driver {pygame.display.get_driver()}", flush=True)
 
     def raise_window(self):
         for _ in range(10):
-            run_text(["wmctrl", "-r", "AV-CSI Tester", "-b", "add,fullscreen,above"], timeout=0.5)
+            run_text(["wmctrl", "-r", "AV-CSI Tester", "-b", "add,above"], timeout=0.5)
+            run_text(["wmctrl", "-r", "AV-CSI Tester", "-e", f"0,0,0,{self.width},{self.height}"], timeout=0.5)
+            run_text(["wmctrl", "-r", "AV-CSI Tester", "-b", "add,fullscreen"], timeout=0.5)
             run_text(["wmctrl", "-a", "AV-CSI Tester"], timeout=0.5)
             time.sleep(0.2)
 
