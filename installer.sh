@@ -238,14 +238,12 @@ RestartSec=3
 WantedBy=graphical.target
 EOF
   systemctl daemon-reload
-  if [[ "$ENABLE_SERVICE" == "1" ]]; then
-    systemctl enable avcsi-desktop.service >/dev/null 2>&1 || true
-  fi
+  systemctl disable --now avcsi-desktop.service >/dev/null 2>&1 || true
   cat >/etc/xdg/autostart/avcsi.desktop <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=AV-CSI Tester
-Exec=sh -c 'pgrep -f av_csi_tester.py >/dev/null || /usr/local/bin/avcsi-desktop-launcher'
+Exec=sh -c 'sleep 8; pgrep -f av_csi_tester.py >/dev/null || /usr/local/bin/avcsi-desktop-launcher'
 Terminal=false
 X-GNOME-Autostart-enabled=true
 EOF
@@ -353,8 +351,7 @@ echo "[7/7] Starting service"
 if [[ "$START_SERVICE" == "1" && "$KIOSK" == "1" ]]; then
   systemctl restart avcsi.service || true
 elif [[ "$START_SERVICE" == "1" ]]; then
-  systemctl restart avcsi-desktop.service || true
-  echo "Desktop autostart is installed. Reboot or log out/in if fullscreen output does not appear."
+  echo "Desktop autostart is installed. Reboot or log out/in to start fullscreen output inside the real desktop session."
 fi
 
 echo "Done."
