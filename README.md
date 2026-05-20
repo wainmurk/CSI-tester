@@ -7,6 +7,7 @@ This profile is tuned for Raspberry Pi Zero 2 W:
 - HDMI output through `/dev/fb0`;
 - SDL/KMSDRM HDMI output first, direct framebuffer fallback second;
 - no 3.5" GPIO/SPI display and no LCD-show install;
+- appliance boot: Raspberry Pi OS desktop/display manager is disabled by default so the tester owns HDMI;
 - lower default render size, `720x576`, to keep CPU/framebuffer bandwidth reasonable on Zero 2 W;
 - ADV7282-M via the Zero 2 W CSI camera connector.
 
@@ -23,6 +24,8 @@ PAL with forced FullHD HDMI output:
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --addr 0x21 --standard PAL --force-fullhd
 ```
+
+This is the recommended command for a FullHD HDMI monitor.
 
 NTSC:
 
@@ -78,6 +81,12 @@ Rotate image:
 curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --rotate 180
 ```
 
+Keep Raspberry Pi OS desktop enabled:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --keep-desktop
+```
+
 ## Behavior
 
 - `NO ADAPTER`: ADV7282-M is not bound by the kernel or `/dev/video0` is not available.
@@ -85,6 +94,7 @@ curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.
 - Video present: fullscreen HDMI output with OSD.
 - Hot swap: the service keeps running and repeatedly re-detects `/dev/video*`; signal loss/reconnect should recover without restarting the service once the kernel exposes the capture device again.
 - `--force-fullhd`: requests HDMI 0 as `1920x1080@60`, disables console blanking, and starts the app on `/dev/tty1`.
+- By default the installer disables the desktop/display manager. This is intentional: SDL/KMSDRM needs to own HDMI for fullscreen appliance output.
 
 ## Service
 

@@ -2,6 +2,7 @@
 Description=AV-CSI Tester for ADV7282-M
 After=systemd-udev-settle.service
 Wants=systemd-udev-settle.service
+Conflicts=display-manager.service
 
 [Service]
 Type=simple

@@ -14,6 +14,7 @@ ADDR="auto"
 ENABLE_SERVICE="1"
 START_SERVICE="1"
 FORCE_FULLHD="0"
+KIOSK="1"
 
 usage() {
   cat <<'EOF'
@@ -31,6 +32,7 @@ Options:
   --standard auto|PAL|NTSC Analog video standard (default: auto)
   --addr auto|0x20|0x21 ADV7282-M I2C address for dtoverlay (default: auto)
   --force-fullhd         Force HDMI 0 to 1920x1080 and disable console blanking
+  --keep-desktop         Do not disable Raspberry Pi OS desktop/display manager
   --no-enable             Install files without enabling the service
   --no-start              Do not start service after install
   -h, --help              Show this help
@@ -49,6 +51,7 @@ while [[ $# -gt 0 ]]; do
     --standard) STANDARD="$2"; shift 2 ;;
     --addr) ADDR="$2"; shift 2 ;;
     --force-fullhd) FORCE_FULLHD="1"; WIDTH="1920"; HEIGHT="1080"; shift ;;
+    --keep-desktop) KIOSK="0"; shift ;;
     --no-lcd-driver) shift ;;
     --no-enable) ENABLE_SERVICE="0"; shift ;;
     --no-start) START_SERVICE="0"; shift ;;
@@ -146,6 +149,18 @@ chmod 0644 /etc/systemd/system/avcsi.service
 systemctl daemon-reload
 if [[ "$ENABLE_SERVICE" == "1" ]]; then
   systemctl enable avcsi.service
+fi
+
+if [[ "$KIOSK" == "1" ]]; then
+  echo "Configuring appliance boot: disabling desktop display manager."
+  systemctl set-default multi-user.target || true
+  for svc in display-manager.service lightdm.service gdm.service sddm.service wayfire.service labwc.service; do
+    if systemctl list-unit-files "$svc" >/dev/null 2>&1; then
+      systemctl disable --now "$svc" >/dev/null 2>&1 || true
+    fi
+  done
+else
+  echo "Keeping desktop/display manager enabled."
 fi
 
 echo "[4/7] Ensuring ADV7282-M overlay"
