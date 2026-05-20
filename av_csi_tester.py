@@ -25,6 +25,7 @@ STANDARDS = ("PAL", "NTSC", "SECAM")
 READ_FAIL_LIMIT = 8
 CAPTURE_STALE_SEC = 2.0
 FRAME_QUEUE_SIZE = 2
+V4L2_FRAME_TIMEOUT_SEC = 1.2
 
 RUNNING = True
 
@@ -55,17 +56,10 @@ class CaptureWorker:
         self.thread.start()
 
     def run(self):
-        cap = cv2.VideoCapture(self.device.path, cv2.CAP_V4L2)
-        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        cap.set(cv2.CAP_PROP_CONVERT_RGB, 1)
-        if not cap.isOpened():
-            self.last_error = "cannot open"
-            cap.release()
-            return
         while not self.stop_event.is_set() and RUNNING:
-            ok, frame = cap.read()
-            if not ok or frame is None:
-                self.last_error = "read failed"
+            frame = capture_one_frame_v4l2(self.device.path, timeout=V4L2_FRAME_TIMEOUT_SEC)
+            if frame is None:
+                self.last_error = "no frame"
                 time.sleep(0.05)
                 continue
             self.last_frame_time = time.time()
@@ -79,7 +73,6 @@ class CaptureWorker:
                 self.frames.put_nowait(frame)
             except queue.Full:
                 pass
-        cap.release()
 
     def read_latest(self) -> Optional[np.ndarray]:
         frame = None
@@ -227,6 +220,39 @@ def run_text(args: List[str], timeout: float = 1.5) -> str:
         return subprocess.check_output(args, text=True, stderr=subprocess.STDOUT, timeout=timeout)
     except (OSError, subprocess.SubprocessError):
         return ""
+
+
+def capture_one_frame_v4l2(path: str, timeout: float) -> Optional[np.ndarray]:
+    info = parse_v4l2_info(VideoDevice(path=path, name=path))
+    size = info.get("input", "")
+    match = re.match(r"(\d+)x(\d+)", size)
+    if match:
+        width, height = int(match.group(1)), int(match.group(2))
+    else:
+        width, height = 720, 576
+    cmd = [
+        "timeout",
+        f"{timeout}",
+        "v4l2-ctl",
+        "-d",
+        path,
+        "--stream-mmap",
+        "--stream-count=1",
+        "--stream-to=-",
+    ]
+    try:
+        raw = subprocess.check_output(cmd, stderr=subprocess.DEVNULL, timeout=timeout + 0.4)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    expected = width * height * 2
+    if len(raw) < expected:
+        return None
+    raw = raw[:expected]
+    uyvy = np.frombuffer(raw, dtype=np.uint8).reshape((height, width, 2))
+    try:
+        return cv2.cvtColor(uyvy, cv2.COLOR_YUV2BGR_UYVY)
+    except cv2.error:
+        return None
 
 
 def list_video_devices() -> List[VideoDevice]:
