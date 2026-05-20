@@ -28,7 +28,7 @@ Options:
   --width N               HDMI output width (default: 720)
   --height N              HDMI output height (default: 576)
   --fb PATH|auto          Framebuffer (default: /dev/fb0 for HDMI)
-  --output auto|desktop|sdl|fb HDMI output backend (default: desktop unless --kiosk)
+  --output auto|desktop|pygame|sdl|fb HDMI output backend (default: desktop unless --kiosk)
   --device PATH|auto      V4L2 device (default: auto)
   --rotate 0|90|180|270   Rotate captured image in the app (default: 0)
   --standard auto|PAL|NTSC Analog video standard (default: auto)
@@ -83,8 +83,8 @@ if [[ "$STANDARD" != "auto" && "$STANDARD" != "PAL" && "$STANDARD" != "NTSC" && 
   exit 2
 fi
 
-if [[ "$OUTPUT" != "auto" && "$OUTPUT" != "desktop" && "$OUTPUT" != "sdl" && "$OUTPUT" != "fb" ]]; then
-  echo "--output must be auto, desktop, sdl, or fb" >&2
+if [[ "$OUTPUT" != "auto" && "$OUTPUT" != "desktop" && "$OUTPUT" != "pygame" && "$OUTPUT" != "sdl" && "$OUTPUT" != "fb" ]]; then
+  echo "--output must be auto, desktop, pygame, sdl, or fb" >&2
   exit 2
 fi
 

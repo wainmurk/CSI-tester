@@ -115,6 +115,43 @@ class SdlDisplay:
         self.pygame.quit()
 
 
+class OpenCvDisplay:
+    def __init__(self, width: int, height: int):
+        self.title = "AV-CSI Tester"
+        cv2.namedWindow(self.title, cv2.WINDOW_NORMAL)
+        cv2.moveWindow(self.title, 0, 0)
+        screen_w, screen_h = self.detect_screen_size(width, height)
+        self.width = screen_w
+        self.height = screen_h
+        cv2.resizeWindow(self.title, self.width, self.height)
+        cv2.setWindowProperty(self.title, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+        self.show(np.full((self.height, self.width, 3), 30, dtype=np.uint8))
+        self.raise_window()
+        print(f"Using OpenCV display: {self.width}x{self.height}", flush=True)
+
+    def detect_screen_size(self, width: int, height: int) -> Tuple[int, int]:
+        text = run_text(["xdpyinfo"], timeout=1.0)
+        match = re.search(r"dimensions:\s*(\d+)x(\d+)\s+pixels", text)
+        if match:
+            return int(match.group(1)), int(match.group(2))
+        return width, height
+
+    def raise_window(self):
+        for _ in range(10):
+            run_text(["wmctrl", "-r", self.title, "-b", "add,above,fullscreen"], timeout=0.5)
+            run_text(["wmctrl", "-a", self.title], timeout=0.5)
+            time.sleep(0.2)
+
+    def show(self, image: np.ndarray):
+        if image.shape[1] != self.width or image.shape[0] != self.height:
+            image = cv2.resize(image, (self.width, self.height), interpolation=cv2.INTER_AREA)
+        cv2.imshow(self.title, image)
+        cv2.waitKey(1)
+
+    def close(self):
+        cv2.destroyWindow(self.title)
+
+
 def stop(_signum, _frame):
     global RUNNING
     RUNNING = False
@@ -445,6 +482,8 @@ def show_frame(fb: Framebuffer, fb_file, image: np.ndarray):
 
 def open_display(output: str, fb_path: str, width: int, height: int) -> Display:
     if output == "desktop":
+        return OpenCvDisplay(width, height)
+    if output == "pygame":
         return SdlDisplay(width, height, driver="")
     if output in ("auto", "sdl"):
         try:
@@ -460,7 +499,7 @@ def main():
     parser = argparse.ArgumentParser(description="ADV7282-M AV-CSI tester for Raspberry Pi display")
     parser.add_argument("--width", type=int, default=DEFAULT_W)
     parser.add_argument("--height", type=int, default=DEFAULT_H)
-    parser.add_argument("--output", choices=("auto", "sdl", "desktop", "fb"), default="auto", help="HDMI output backend")
+    parser.add_argument("--output", choices=("auto", "sdl", "desktop", "pygame", "fb"), default="auto", help="HDMI output backend")
     parser.add_argument("--fb", default="auto", help="Framebuffer path, HDMI console is usually /dev/fb0")
     parser.add_argument("--device", default="auto", help="V4L2 device path or auto")
     parser.add_argument("--rotate", choices=("0", "90", "180", "270"), default="0")
