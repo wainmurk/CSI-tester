@@ -16,6 +16,7 @@ START_SERVICE="1"
 FORCE_FULLHD="0"
 KIOSK="0"
 TARGET_USER="${SUDO_USER:-${USER:-pi}}"
+SKIP_APT="${SKIP_APT:-0}"
 
 usage() {
   cat <<'EOF'
@@ -36,6 +37,7 @@ Options:
   --kiosk                Disable desktop and run as system HDMI/KMS service
   --keep-desktop         Keep Raspberry Pi OS desktop/display manager enabled (default)
   --user USER            Desktop user for fullscreen autostart (default: sudo user)
+  --skip-apt             Do not run apt-get package installation
   --no-enable             Install files without enabling the service
   --no-start              Do not start service after install
   -h, --help              Show this help
@@ -57,6 +59,7 @@ while [[ $# -gt 0 ]]; do
     --kiosk) KIOSK="1"; [[ "$OUTPUT" == "auto" ]] && OUTPUT="auto"; shift ;;
     --keep-desktop) KIOSK="0"; shift ;;
     --user) TARGET_USER="$2"; shift 2 ;;
+    --skip-apt) SKIP_APT="1"; shift ;;
     --no-lcd-driver) shift ;;
     --no-enable) ENABLE_SERVICE="0"; shift ;;
     --no-start) START_SERVICE="0"; shift ;;
@@ -121,18 +124,36 @@ append_boot_config_once() {
 }
 
 echo "[1/7] Installing packages"
-apt-get update
-apt-get install -y \
-  ca-certificates \
-  curl \
-  git \
-  i2c-tools \
-  python3 \
-  python3-numpy \
-  python3-opencv \
-  python3-pygame \
-  wmctrl \
-  v4l-utils
+if [[ "$SKIP_APT" == "1" ]]; then
+  echo "Skipping apt package installation."
+else
+  apt-get update || true
+  if command -v timeout >/dev/null 2>&1; then
+    timeout 180 apt-get install -y \
+      ca-certificates \
+      curl \
+      git \
+      i2c-tools \
+      python3 \
+      python3-numpy \
+      python3-opencv \
+      python3-pygame \
+      wmctrl \
+      v4l-utils || echo "WARNING: apt install failed or timed out; continuing with existing packages."
+  else
+    apt-get install -y \
+      ca-certificates \
+      curl \
+      git \
+      i2c-tools \
+      python3 \
+      python3-numpy \
+      python3-opencv \
+      python3-pygame \
+      wmctrl \
+      v4l-utils || echo "WARNING: apt install failed; continuing with existing packages."
+  fi
+fi
 
 echo "[2/7] Downloading AV-CSI tester files"
 install -d -m 0755 "$INSTALL_DIR"
