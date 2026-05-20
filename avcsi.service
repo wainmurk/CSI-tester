@@ -6,8 +6,8 @@ Wants=systemd-udev-settle.service
 [Service]
 Type=simple
 User=root
-Environment=AVCSI_WIDTH=1280
-Environment=AVCSI_HEIGHT=720
+Environment=AVCSI_WIDTH=720
+Environment=AVCSI_HEIGHT=576
 Environment=AVCSI_FB=/dev/fb0
 Environment=AVCSI_DEVICE=auto
 Environment=AVCSI_ROTATE=0

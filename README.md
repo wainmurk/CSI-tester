@@ -1,41 +1,68 @@
-# AV-CSI Tester for ADV7282-M on Raspberry Pi 4
+# AV-CSI Tester for ADV7282-M on Raspberry Pi Zero 2 W
 
 Tester for an AV-to-CSI adapter based on ADV7282-M with final video output on HDMI 0.
 
+This profile is tuned for Raspberry Pi Zero 2 W:
+
+- HDMI output through `/dev/fb0`;
+- no 3.5" GPIO/SPI display and no LCD-show install;
+- lower default render size, `720x576`, to keep CPU/framebuffer bandwidth reasonable on Zero 2 W;
+- ADV7282-M via the Zero 2 W CSI camera connector.
+
 ## One Command Install
 
-Run this on the Raspberry Pi:
+PAL:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --addr 0x21 --standard PAL
 ```
 
-This HDMI build does not install LCD-show and does not use the 3.5" GPIO/SPI display. Output goes to the HDMI framebuffer, normally `/dev/fb0`.
+NTSC:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --addr 0x21 --standard NTSC --height 480
+```
+
+After install, reboot:
+
+```bash
+sudo reboot
+```
+
+## Hardware Notes for Zero 2 W
+
+Raspberry Pi Zero 2 W uses the smaller 22-pin camera connector. Use the correct Zero camera ribbon/adapter for the ADV7282-M CSI cable. A full-size 15-pin camera cable from Raspberry Pi 4 will not plug in directly without an adapter.
+
+The stock `adv7282m` overlay uses the camera connector I2C bus and Unicam. It does not use GPIO2/GPIO3 `i2c-1`.
+
+Expected good state after reboot:
+
+```bash
+ls /dev/i2c-*
+v4l2-ctl --list-devices
+dmesg | grep -Ei "adv|728|unicam|csi" | tail -80
+```
+
+You should see `adv7180 ... chip id ... found` and `unicam ... /dev/video0`.
 
 ## Options
 
-Force NTSC:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --addr 0x21 --standard NTSC
-```
-
-Use a specific V4L2 device:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --device /dev/video0
-```
-
-Use a specific HDMI framebuffer or output size:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --fb /dev/fb0 --width 1920 --height 1080
-```
-
-Force ADV7282-M I2C address if needed:
+Force address `0x20`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --addr 0x20 --standard PAL
+```
+
+Use a specific framebuffer/output size:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --fb /dev/fb0 --width 720 --height 576
+```
+
+Rotate image:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --rotate 180
 ```
 
 ## Behavior
@@ -43,7 +70,7 @@ curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.
 - `NO ADAPTER`: ADV7282-M is not bound by the kernel or `/dev/video0` is not available.
 - `NO SIGNAL`: adapter is present but frames are not readable.
 - Video present: fullscreen HDMI output with OSD.
-- Hot swap: the service keeps running and repeatedly re-detects `/dev/video*`; unplug/replug or signal loss should recover without restarting the service once the kernel exposes the capture device again.
+- Hot swap: the service keeps running and repeatedly re-detects `/dev/video*`; signal loss/reconnect should recover without restarting the service once the kernel exposes the capture device again.
 
 ## Service
 
@@ -69,25 +96,16 @@ The installer places the ADV7282-M overlay under `[all]`:
 dtoverlay=adv7282m,addr=0x21
 ```
 
-The overlay must not be under `[cm4]`, `[cm5]`, or another board-specific section for Raspberry Pi 4.
+The overlay must be under `[all]`, not under `[cm4]`, `[cm5]`, or another board-specific section.
 
 ## Diagnostics
-
-Expected good state:
-
-```bash
-dmesg | grep -Ei "adv|728|unicam|csi" | tail -80
-v4l2-ctl --list-devices
-```
-
-You should see `adv7180 ... chip id ... found` and `unicam ... /dev/video0`.
-
-If not:
 
 ```bash
 grep -n "adv728" /boot/firmware/config.txt /boot/config.txt 2>/dev/null || true
 ls /dev/i2c-*
 i2cdetect -l
 for b in /dev/i2c-*; do sudo i2cdetect -y "${b##*-}"; done
+v4l2-ctl --list-devices
+v4l2-ctl -d /dev/video0 -D
 journalctl -u avcsi.service -n 80 --no-pager
 ```

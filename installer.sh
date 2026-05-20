@@ -3,8 +3,8 @@ set -euo pipefail
 
 REPO_RAW="${REPO_RAW:-https://raw.githubusercontent.com/wainmurk/CSI-tester/main}"
 INSTALL_DIR="/opt/avcsi"
-WIDTH="1280"
-HEIGHT="720"
+WIDTH="720"
+HEIGHT="576"
 FB="/dev/fb0"
 DEVICE="auto"
 ROTATE="0"
@@ -20,8 +20,8 @@ Usage:
 
 Options:
   --install-dir DIR       Install directory (default: /opt/avcsi)
-  --width N               HDMI output width (default: 1280)
-  --height N              HDMI output height (default: 720)
+  --width N               HDMI output width (default: 720)
+  --height N              HDMI output height (default: 576)
   --fb PATH|auto          Framebuffer (default: /dev/fb0 for HDMI)
   --device PATH|auto      V4L2 device (default: auto)
   --rotate 0|90|180|270   Rotate captured image in the app (default: 0)
@@ -91,6 +91,12 @@ curl -fsSL "${REPO_RAW}/av_csi_tester.py" -o "${INSTALL_DIR}/av_csi_tester.py"
 curl -fsSL "${REPO_RAW}/README.md" -o "${INSTALL_DIR}/README.md"
 chmod 0755 "${INSTALL_DIR}/av_csi_tester.py"
 chmod 0644 "${INSTALL_DIR}/README.md"
+
+MODEL="$(tr -d '\0' </proc/device-tree/model 2>/dev/null || true)"
+echo "Detected board: ${MODEL:-unknown}"
+if ! printf '%s' "$MODEL" | grep -qi 'Zero 2'; then
+  echo "NOTE: this installer profile is tuned for Raspberry Pi Zero 2 W, but will continue."
+fi
 
 echo "[3/7] Writing runtime config"
 cat >/etc/default/avcsi <<EOF
@@ -163,8 +169,8 @@ fi
 echo "[5/7] Checking devices"
 v4l2-ctl --list-devices || true
 i2cdetect -l || true
-if ! i2cdetect -l | grep -Eq 'i2c-(10|0)[[:space:]]'; then
-  echo "WARNING: camera-connector I2C bus (usually i2c-10 on Pi 4) is not visible."
+if ! i2cdetect -l | grep -Eq 'i2c-(10|0|22)[[:space:]]'; then
+  echo "WARNING: camera-connector I2C bus is not visible."
   echo "The adv7282m overlay uses the camera connector I2C pins, not GPIO2/GPIO3 i2c-1."
 fi
 if [[ -e "$FB" && "$FB" != "auto" ]]; then
