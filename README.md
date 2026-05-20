@@ -95,6 +95,7 @@ curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.
 - Hot swap: the service keeps running and repeatedly re-detects `/dev/video*`; signal loss/reconnect should recover without restarting the service once the kernel exposes the capture device again.
 - `--force-fullhd`: requests HDMI 0 as `1920x1080@60`, disables console blanking, and starts the app on `/dev/tty1`.
 - By default the installer disables the desktop/display manager. This is intentional: SDL/KMSDRM needs to own HDMI for fullscreen appliance output.
+- The service owns `/dev/tty1` and conflicts with `getty@tty1.service`, so the HDMI output is not covered by a text login prompt.
 
 ## Service
 
@@ -148,4 +149,12 @@ If the service is running and logs say `Using framebuffer /dev/fb0` but HDMI is 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --addr 0x21 --standard PAL --force-fullhd --output auto
 sudo reboot
+```
+
+If the desktop disappeared after reboot but the tester is not visible, reinstall the service and check the SDL/KMSDRM log:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wainmurk/CSI-tester/main/installer.sh | sudo bash -s -- --addr 0x21 --standard PAL --force-fullhd --output auto
+sudo systemctl restart avcsi.service
+sudo journalctl -u avcsi.service -n 120 --no-pager
 ```

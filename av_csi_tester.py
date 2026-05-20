@@ -69,6 +69,7 @@ class SdlDisplay:
     def __init__(self, width: int, height: int):
         os.environ.setdefault("SDL_VIDEODRIVER", "kmsdrm")
         os.environ.setdefault("SDL_NOMOUSE", "1")
+        os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
         import pygame
 
         self.pygame = pygame

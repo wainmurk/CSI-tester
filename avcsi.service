@@ -2,11 +2,17 @@
 Description=AV-CSI Tester for ADV7282-M
 After=systemd-udev-settle.service
 Wants=systemd-udev-settle.service
-Conflicts=display-manager.service
+Conflicts=display-manager.service getty@tty1.service
 
 [Service]
 Type=simple
 User=root
+SupplementaryGroups=video render tty
+StandardInput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+TTYVTDisallocate=yes
 Environment=AVCSI_WIDTH=720
 Environment=AVCSI_HEIGHT=576
 Environment=AVCSI_OUTPUT=auto
@@ -16,7 +22,11 @@ Environment=AVCSI_ROTATE=0
 Environment=AVCSI_STANDARD=auto
 Environment=SDL_VIDEODRIVER=kmsdrm
 Environment=SDL_NOMOUSE=1
+Environment=SDL_AUDIODRIVER=dummy
+Environment=XDG_RUNTIME_DIR=/run/avcsi
 EnvironmentFile=-/etc/default/avcsi
+RuntimeDirectory=avcsi
+RuntimeDirectoryMode=0755
 ExecStart=/usr/bin/python3 /opt/avcsi/av_csi_tester.py --width ${AVCSI_WIDTH} --height ${AVCSI_HEIGHT} --output ${AVCSI_OUTPUT} --fb ${AVCSI_FB} --device ${AVCSI_DEVICE} --rotate ${AVCSI_ROTATE} --standard ${AVCSI_STANDARD}
 Restart=always
 RestartSec=2
