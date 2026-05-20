@@ -28,7 +28,7 @@ Options:
   --width N               HDMI output width (default: 720)
   --height N              HDMI output height (default: 576)
   --fb PATH|auto          Framebuffer (default: /dev/fb0 for HDMI)
-  --output auto|desktop|pygame|sdl|fb HDMI output backend (default: desktop unless --kiosk)
+  --output auto|desktop|x11|pygame|sdl|fb HDMI output backend (default: desktop unless --kiosk)
   --device PATH|auto      V4L2 device (default: auto)
   --rotate 0|90|180|270   Rotate captured image in the app (default: 0)
   --standard auto|PAL|NTSC Analog video standard (default: auto)
@@ -83,8 +83,8 @@ if [[ "$STANDARD" != "auto" && "$STANDARD" != "PAL" && "$STANDARD" != "NTSC" && 
   exit 2
 fi
 
-if [[ "$OUTPUT" != "auto" && "$OUTPUT" != "desktop" && "$OUTPUT" != "pygame" && "$OUTPUT" != "sdl" && "$OUTPUT" != "fb" ]]; then
-  echo "--output must be auto, desktop, pygame, sdl, or fb" >&2
+if [[ "$OUTPUT" != "auto" && "$OUTPUT" != "desktop" && "$OUTPUT" != "x11" && "$OUTPUT" != "pygame" && "$OUTPUT" != "sdl" && "$OUTPUT" != "fb" ]]; then
+  echo "--output must be auto, desktop, x11, pygame, sdl, or fb" >&2
   exit 2
 fi
 
@@ -219,7 +219,7 @@ flock -n 9 || exit 0
 pkill -u "$(id -un)" -f '/opt/avcsi/av_csi_tester.py' >/dev/null 2>&1 || true
 sleep 1
 for _ in $(seq 1 60); do
-  if [[ -n "${DISPLAY:-}" ]] || [[ -S /tmp/.X11-unix/X0 ]]; then
+  if [[ -n "${WAYLAND_DISPLAY:-}" ]] || [[ -S "/run/user/$(id -u)/wayland-0" ]] || [[ -S "/run/user/$(id -u)/wayland-1" ]] || [[ -n "${DISPLAY:-}" ]] || [[ -S /tmp/.X11-unix/X0 ]]; then
     break
   fi
   sleep 1
@@ -228,7 +228,20 @@ setterm -blank 0 -powerdown 0 -powersave off >/dev/null 2>&1 || true
 source /etc/default/avcsi 2>/dev/null || true
 export DISPLAY="${DISPLAY:-:0}"
 export XAUTHORITY="${XAUTHORITY:-$HOME/.Xauthority}"
-export SDL_VIDEODRIVER=x11
+export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+if [[ -z "${WAYLAND_DISPLAY:-}" ]]; then
+  for sock in "$XDG_RUNTIME_DIR"/wayland-*; do
+    if [[ -S "$sock" ]]; then
+      export WAYLAND_DISPLAY="$(basename "$sock")"
+      break
+    fi
+  done
+fi
+if [[ "${AVCSI_OUTPUT:-desktop}" == "desktop" ]]; then
+  export SDL_VIDEODRIVER=wayland
+elif [[ "${AVCSI_OUTPUT:-desktop}" == "x11" ]]; then
+  export SDL_VIDEODRIVER=x11
+fi
 rm -f /tmp/avcsi-desktop.log
 /usr/bin/python3 /opt/avcsi/av_csi_tester.py \
   --width "${AVCSI_WIDTH:-1920}" \

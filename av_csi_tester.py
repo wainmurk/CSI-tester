@@ -482,6 +482,8 @@ def show_frame(fb: Framebuffer, fb_file, image: np.ndarray):
 
 def open_display(output: str, fb_path: str, width: int, height: int) -> Display:
     if output == "desktop":
+        return SdlDisplay(width, height, driver="wayland")
+    if output == "x11":
         return OpenCvDisplay(width, height)
     if output == "pygame":
         return SdlDisplay(width, height, driver="")
@@ -499,7 +501,7 @@ def main():
     parser = argparse.ArgumentParser(description="ADV7282-M AV-CSI tester for Raspberry Pi display")
     parser.add_argument("--width", type=int, default=DEFAULT_W)
     parser.add_argument("--height", type=int, default=DEFAULT_H)
-    parser.add_argument("--output", choices=("auto", "sdl", "desktop", "pygame", "fb"), default="auto", help="HDMI output backend")
+    parser.add_argument("--output", choices=("auto", "sdl", "desktop", "x11", "pygame", "fb"), default="auto", help="HDMI output backend")
     parser.add_argument("--fb", default="auto", help="Framebuffer path, HDMI console is usually /dev/fb0")
     parser.add_argument("--device", default="auto", help="V4L2 device path or auto")
     parser.add_argument("--rotate", choices=("0", "90", "180", "270"), default="0")
